@@ -3,6 +3,7 @@ package cn.langlang.javainterpreter.runtime;
 import cn.langlang.javainterpreter.ast.*;
 import cn.langlang.javainterpreter.parser.Modifier;
 import java.util.*;
+import java.util.function.Function;
 
 public class ScriptMethod {
     private final String name;
@@ -15,6 +16,7 @@ public class ScriptMethod {
     private final boolean isConstructor;
     private final boolean isDefault;
     private final List<Annotation> annotations;
+    private Function<Object[], Object> nativeImplementation;
     
     public ScriptMethod(String name, int modifiers, Type returnType,
                        List<ParameterDeclaration> parameters, boolean isVarArgs,
@@ -59,6 +61,14 @@ public class ScriptMethod {
     public boolean isConstructor() { return isConstructor; }
     public boolean isDefault() { return isDefault; }
     public List<Annotation> getAnnotations() { return annotations; }
+    
+    public Function<Object[], Object> getNativeImplementation() {
+        return nativeImplementation;
+    }
+    
+    public void setNativeImplementation(Function<Object[], Object> nativeImplementation) {
+        this.nativeImplementation = nativeImplementation;
+    }
     
     public Annotation getAnnotation(String annotationName) {
         for (Annotation ann : annotations) {

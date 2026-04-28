@@ -12,13 +12,23 @@ public class Interpreter implements ASTVisitor<Object> {
     private Environment currentEnv;
     private final Map<String, ScriptClass> loadedClasses;
     private final StandardLibrary stdLib;
+    private final List<cn.langlang.javainterpreter.annotation.AnnotationProcessor> annotationProcessors;
     
     public Interpreter() {
         this.globalEnv = new Environment();
         this.currentEnv = globalEnv;
         this.loadedClasses = new HashMap<>();
         this.stdLib = new StandardLibrary(this);
+        this.annotationProcessors = new ArrayList<>();
         initializeBuiltInClasses();
+    }
+    
+    public void addAnnotationProcessor(cn.langlang.javainterpreter.annotation.AnnotationProcessor processor) {
+        annotationProcessors.add(processor);
+    }
+    
+    public List<cn.langlang.javainterpreter.annotation.AnnotationProcessor> getAnnotationProcessors() {
+        return annotationProcessors;
     }
     
     public Environment getGlobalEnvironment() {
@@ -178,6 +188,10 @@ public class Interpreter implements ASTVisitor<Object> {
         }
         
         for (MethodDeclaration method : node.getMethods()) {
+            if ((method.getModifiers() & Modifier.NATIVE) != 0) {
+                throw new RuntimeException("Native methods are not supported: " + 
+                    node.getName() + "." + method.getName() + "()");
+            }
             ScriptMethod scriptMethod = new ScriptMethod(
                 method.getName(), method.getModifiers(), method.getReturnType(),
                 method.getParameters(), method.isVarArgs(), method.getBody(),
@@ -206,7 +220,18 @@ public class Interpreter implements ASTVisitor<Object> {
             registerNestedType(nested, nestedFullName);
         }
         
+        processAnnotations(node, scriptClass);
+        
         return null;
+    }
+    
+    private void processAnnotations(ClassDeclaration classDecl, ScriptClass scriptClass) {
+        for (cn.langlang.javainterpreter.annotation.AnnotationProcessor processor : annotationProcessors) {
+            if (processor instanceof cn.langlang.javainterpreter.annotation.DataAnnotationProcessor) {
+                ((cn.langlang.javainterpreter.annotation.DataAnnotationProcessor) processor)
+                    .processClass(classDecl, scriptClass, null);
+            }
+        }
     }
     
     private void registerNestedType(TypeDeclaration nested, String fullName) {
@@ -285,6 +310,29 @@ public class Interpreter implements ASTVisitor<Object> {
                 constant.getName(), constant.getModifiers(), constant.getType(),
                 constant.getInitializer(), scriptClass, constant.getAnnotations());
             scriptClass.addField(scriptField);
+        }
+        
+        boolean hasFunctionalInterface = false;
+        for (Annotation ann : node.getAnnotations()) {
+            if (ann.getTypeName().equals("FunctionalInterface") || 
+                ann.getTypeName().endsWith(".FunctionalInterface")) {
+                hasFunctionalInterface = true;
+                break;
+            }
+        }
+        
+        if (hasFunctionalInterface) {
+            int abstractMethodCount = 0;
+            for (MethodDeclaration method : node.getMethods()) {
+                if ((method.getModifiers() & Modifier.DEFAULT) == 0 && 
+                    (method.getModifiers() & Modifier.STATIC) == 0) {
+                    abstractMethodCount++;
+                }
+            }
+            if (abstractMethodCount != 1) {
+                throw new RuntimeException("@FunctionalInterface annotation requires exactly one abstract method, but " + 
+                    name + " has " + abstractMethodCount + " abstract methods");
+            }
         }
         
         return null;
@@ -1364,6 +1412,20 @@ public class Interpreter implements ASTVisitor<Object> {
                 }
             }
             return nativeMethod.getNativeImplementation().apply(fullArgs);
+        }
+        
+        if (method.getNativeImplementation() != null) {
+            Object[] fullArgs;
+            if (method.isStatic()) {
+                fullArgs = args.toArray();
+            } else {
+                fullArgs = new Object[args.size() + 1];
+                fullArgs[0] = target;
+                for (int i = 0; i < args.size(); i++) {
+                    fullArgs[i + 1] = args.get(i);
+                }
+            }
+            return method.getNativeImplementation().apply(fullArgs);
         }
         
         Environment previous = currentEnv;

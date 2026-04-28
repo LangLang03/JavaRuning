@@ -255,6 +255,14 @@ public class JavaInterpreter {
         return globalEnv;
     }
     
+    public void addAnnotationProcessor(cn.langlang.javainterpreter.annotation.AnnotationProcessor processor) {
+        interpreter.addAnnotationProcessor(processor);
+    }
+    
+    public void enableLombokStyleAnnotations() {
+        interpreter.addAnnotationProcessor(new cn.langlang.javainterpreter.annotation.DataAnnotationProcessor());
+    }
+    
     public static class Modifiers {
         public static final int PUBLIC = Modifier.PUBLIC;
         public static final int PRIVATE = Modifier.PRIVATE;
