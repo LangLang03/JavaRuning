@@ -4,6 +4,7 @@ import cn.langlang.javainterpreter.ast.*;
 import cn.langlang.javainterpreter.runtime.*;
 import java.util.*;
 
+@Deprecated
 public interface AnnotationProcessor {
     
     Set<String> getSupportedAnnotationTypes();

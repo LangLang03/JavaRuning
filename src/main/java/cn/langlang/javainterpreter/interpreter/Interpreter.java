@@ -221,17 +221,21 @@ public class Interpreter implements ASTVisitor<Object> {
         }
         
         processAnnotations(node, scriptClass);
-        
+
         return null;
     }
-    
+
     private void processAnnotations(ClassDeclaration classDecl, ScriptClass scriptClass) {
+        cn.langlang.javainterpreter.annotation.ProcessingEnvironment env =
+            new cn.langlang.javainterpreter.annotation.ProcessingEnvironment(this, globalEnv);
+        
         for (cn.langlang.javainterpreter.annotation.AnnotationProcessor processor : annotationProcessors) {
-            if (processor instanceof cn.langlang.javainterpreter.annotation.DataAnnotationProcessor) {
-                ((cn.langlang.javainterpreter.annotation.DataAnnotationProcessor) processor)
-                    .processClass(classDecl, scriptClass, null);
+            if (processor instanceof cn.langlang.javainterpreter.annotation.AbstractAnnotationProcessor) {
+                env.registerProcessor((cn.langlang.javainterpreter.annotation.AbstractAnnotationProcessor) processor);
             }
         }
+        
+        env.invokeProcessorsForClass(classDecl, scriptClass);
     }
     
     private void registerNestedType(TypeDeclaration nested, String fullName) {

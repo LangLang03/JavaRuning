@@ -258,7 +258,13 @@ public class JavaInterpreter {
     public void addAnnotationProcessor(cn.langlang.javainterpreter.annotation.AnnotationProcessor processor) {
         interpreter.addAnnotationProcessor(processor);
     }
-    
+
+    public void registerAnnotationProcessor(cn.langlang.javainterpreter.annotation.AbstractAnnotationProcessor processor) {
+        cn.langlang.javainterpreter.annotation.ProcessingEnvironment env =
+            new cn.langlang.javainterpreter.annotation.ProcessingEnvironment(interpreter, interpreter.getGlobalEnvironment());
+        env.registerProcessor(processor);
+    }
+
     public void enableLombokStyleAnnotations() {
         interpreter.addAnnotationProcessor(new cn.langlang.javainterpreter.annotation.DataAnnotationProcessor());
     }

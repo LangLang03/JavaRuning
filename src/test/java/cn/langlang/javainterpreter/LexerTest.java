@@ -135,8 +135,8 @@ public class LexerTest {
         
         assertEquals(TokenType.INT_LITERAL, tokens.get(0).getType());
         assertEquals(255, tokens.get(0).getLiteral());
-        assertEquals(TokenType.INT_LITERAL, tokens.get(1).getType());
-        assertEquals(0xCAFEBABE, tokens.get(1).getLiteral());
+        assertEquals(TokenType.LONG_LITERAL, tokens.get(1).getType());
+        assertEquals(0xCAFEBABEL, tokens.get(1).getLiteral());
     }
     
     @Test

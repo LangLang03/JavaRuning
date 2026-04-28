@@ -9,13 +9,15 @@ public class ProcessingEnvironment {
     private final Interpreter interpreter;
     private final Environment globalEnv;
     private final Map<String, ScriptClass> classes;
-    private final List<AnnotationProcessor> processors;
+    private final Map<String, AbstractAnnotationProcessor> processorRegistry;
+    private final List<AbstractAnnotationProcessor> orderedProcessors;
     
     public ProcessingEnvironment(Interpreter interpreter, Environment globalEnv) {
         this.interpreter = interpreter;
         this.globalEnv = globalEnv;
         this.classes = new HashMap<>();
-        this.processors = new ArrayList<>();
+        this.processorRegistry = new HashMap<>();
+        this.orderedProcessors = new ArrayList<>();
     }
     
     public Interpreter getInterpreter() {
@@ -35,12 +37,62 @@ public class ProcessingEnvironment {
         classes.put(name, scriptClass);
     }
     
-    public void addProcessor(AnnotationProcessor processor) {
-        processors.add(processor);
+    public void registerProcessor(AbstractAnnotationProcessor processor) {
+        String fullName = processor.getFullName();
+        processorRegistry.put(fullName, processor);
+        orderedProcessors.add(processor);
+        orderedProcessors.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
     }
     
-    public List<AnnotationProcessor> getProcessors() {
-        return processors;
+    public void unregisterProcessor(String name) {
+        AbstractAnnotationProcessor processor = processorRegistry.remove(name);
+        if (processor != null) {
+            orderedProcessors.remove(processor);
+        }
+    }
+    
+    public void unregisterProcessor(AbstractAnnotationProcessor processor) {
+        unregisterProcessor(processor.getFullName());
+    }
+    
+    public AbstractAnnotationProcessor getProcessor(String name) {
+        return processorRegistry.get(name);
+    }
+    
+    public List<AbstractAnnotationProcessor> getProcessors() {
+        return new ArrayList<>(orderedProcessors);
+    }
+    
+    public List<AbstractAnnotationProcessor> getProcessorsForAnnotation(String annotationName) {
+        List<AbstractAnnotationProcessor> result = new ArrayList<>();
+        for (AbstractAnnotationProcessor processor : orderedProcessors) {
+            if (processor.supportsAnnotation(annotationName)) {
+                result.add(processor);
+            }
+        }
+        return result;
+    }
+    
+    public List<AbstractAnnotationProcessor> getProcessorsForElement(int elementKind) {
+        List<AbstractAnnotationProcessor> result = new ArrayList<>();
+        for (AbstractAnnotationProcessor processor : orderedProcessors) {
+            if (processor.supportsElement(elementKind)) {
+                result.add(processor);
+            }
+        }
+        return result;
+    }
+    
+    public List<AbstractAnnotationProcessor> getProcessorsForAnnotationAndElement(
+            String annotationName, int elementKind) {
+        List<AbstractAnnotationProcessor> result = new ArrayList<>();
+        for (AbstractAnnotationProcessor processor : orderedProcessors) {
+            if (processor.supportsAnnotation(annotationName) &&
+                processor.supportsElement(elementKind)) {
+                result.add(processor);
+            }
+        }
+        return result;
     }
     
     public void addMethodToClass(String className, ScriptMethod method) {
@@ -75,6 +127,69 @@ public class ProcessingEnvironment {
             return allMethods;
         }
         return new ArrayList<>();
+    }
+    
+    public void invokeProcessorsForClass(ClassDeclaration classDecl, ScriptClass scriptClass) {
+        ProcessingContext context = new ProcessingContext(
+            ProcessingContext.TYPE, classDecl, null, null, scriptClass, this);
+        
+        for (Annotation ann : classDecl.getAnnotations()) {
+            List<AbstractAnnotationProcessor> processors =
+                getProcessorsForAnnotationAndElement(ann.getTypeName(), ProcessingContext.TYPE);
+            for (AbstractAnnotationProcessor processor : processors) {
+                ProcessingContext annContext = new ProcessingContext(
+                    ProcessingContext.TYPE, classDecl, null, ann, scriptClass, this);
+                processor.onStart(annContext);
+                processor.process(annContext);
+                processor.onEnd(annContext);
+            }
+        }
+        
+        for (Annotation ann : classDecl.getAnnotations()) {
+            List<AbstractAnnotationProcessor> processors =
+                getProcessorsForAnnotationAndElement(ann.getTypeName(), ProcessingContext.TYPE);
+            for (AbstractAnnotationProcessor processor : processors) {
+                ProcessingContext annContext = new ProcessingContext(
+                    ProcessingContext.TYPE, classDecl, null, ann, scriptClass, this);
+                processor.onStart(annContext);
+                processor.process(annContext);
+                processor.onEnd(annContext);
+            }
+        }
+    }
+    
+    public void invokeProcessorsForMethod(MethodDeclaration method, ScriptClass scriptClass) {
+        ProcessingContext context = new ProcessingContext(
+            ProcessingContext.METHOD, method, null, null, scriptClass, this);
+        
+        for (Annotation ann : method.getAnnotations()) {
+            List<AbstractAnnotationProcessor> processors =
+                getProcessorsForAnnotationAndElement(ann.getTypeName(), ProcessingContext.METHOD);
+            for (AbstractAnnotationProcessor processor : processors) {
+                ProcessingContext annContext = new ProcessingContext(
+                    ProcessingContext.METHOD, method, null, ann, scriptClass, this);
+                processor.onStart(annContext);
+                processor.process(annContext);
+                processor.onEnd(annContext);
+            }
+        }
+    }
+    
+    public void invokeProcessorsForField(FieldDeclaration field, ScriptClass scriptClass) {
+        ProcessingContext context = new ProcessingContext(
+            ProcessingContext.FIELD, field, null, null, scriptClass, this);
+        
+        for (Annotation ann : field.getAnnotations()) {
+            List<AbstractAnnotationProcessor> processors =
+                getProcessorsForAnnotationAndElement(ann.getTypeName(), ProcessingContext.FIELD);
+            for (AbstractAnnotationProcessor processor : processors) {
+                ProcessingContext annContext = new ProcessingContext(
+                    ProcessingContext.FIELD, field, null, ann, scriptClass, this);
+                processor.onStart(annContext);
+                processor.process(annContext);
+                processor.onEnd(annContext);
+            }
+        }
     }
     
     public static class Element {

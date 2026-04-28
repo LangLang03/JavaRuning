@@ -5,69 +5,54 @@ import cn.langlang.javainterpreter.parser.Modifier;
 import cn.langlang.javainterpreter.runtime.*;
 import java.util.*;
 
-public class DataAnnotationProcessor implements AnnotationProcessor {
+public class DataAnnotationProcessor extends AbstractAnnotationProcessor {
     
-    @Override
-    public Set<String> getSupportedAnnotationTypes() {
-        Set<String> types = new HashSet<>();
-        types.add("Data");
-        types.add("lombok.Data");
-        types.add("Getter");
-        types.add("lombok.Getter");
-        types.add("Setter");
-        types.add("lombok.Setter");
-        types.add("ToString");
-        types.add("lombok.ToString");
-        types.add("EqualsAndHashCode");
-        types.add("lombok.EqualsAndHashCode");
-        types.add("NoArgsConstructor");
-        types.add("lombok.NoArgsConstructor");
-        types.add("AllArgsConstructor");
-        types.add("lombok.AllArgsConstructor");
-        return types;
+    private static final Set<String> LOMBOK_ANNOTATIONS = new HashSet<>(Arrays.asList(
+        "Data", "Getter", "Setter", "ToString",
+        "EqualsAndHashCode", "NoArgsConstructor", "AllArgsConstructor"
+    ));
+    
+    private static final Set<Integer> TYPE_ELEMENT = new HashSet<>(Collections.singleton(
+        ProcessingContext.TYPE
+    ));
+    
+    public DataAnnotationProcessor() {
+        super("DataAnnotationProcessor", "lombok", LOMBOK_ANNOTATIONS, TYPE_ELEMENT);
     }
     
     @Override
-    public void process(Set<? extends TypeDeclaration> annotations, 
-                       ProcessingEnvironment processingEnv) {
-    }
-    
-    public void processClass(ClassDeclaration classDecl, ScriptClass scriptClass, 
-                            ProcessingEnvironment processingEnv) {
-        List<Annotation> classAnnotations = classDecl.getAnnotations();
-        
-        boolean hasData = false;
-        boolean hasGetter = false;
-        boolean hasSetter = false;
-        boolean hasToString = false;
-        boolean hasEqualsAndHashCode = false;
-        boolean hasNoArgsConstructor = false;
-        boolean hasAllArgsConstructor = false;
-        
-        for (Annotation ann : classAnnotations) {
-            String typeName = ann.getTypeName();
-            if (typeName.equals("Data") || typeName.endsWith(".Data")) {
-                hasData = true;
-            } else if (typeName.equals("Getter") || typeName.endsWith(".Getter")) {
-                hasGetter = true;
-            } else if (typeName.equals("Setter") || typeName.endsWith(".Setter")) {
-                hasSetter = true;
-            } else if (typeName.equals("ToString") || typeName.endsWith(".ToString")) {
-                hasToString = true;
-            } else if (typeName.equals("EqualsAndHashCode") || typeName.endsWith(".EqualsAndHashCode")) {
-                hasEqualsAndHashCode = true;
-            } else if (typeName.equals("NoArgsConstructor") || typeName.endsWith(".NoArgsConstructor")) {
-                hasNoArgsConstructor = true;
-            } else if (typeName.equals("AllArgsConstructor") || typeName.endsWith(".AllArgsConstructor")) {
-                hasAllArgsConstructor = true;
-            }
+    public void process(ProcessingContext context) {
+        ClassDeclaration classDecl = context.asClassDeclaration();
+        if (classDecl == null) {
+            return;
         }
         
-        if (hasData) {
-            hasGetter = true;
-            hasSetter = true;
-            hasToString = true;
-            hasEqualsAndHashCode = true;
+        ScriptClass scriptClass = context.getScriptClass();
+        String annotationName = context.getAnnotationName();
+        
+        if (annotationName == null) {
+            return;
+        }
+        
+        String simpleName = annotationName;
+        int lastDot = annotationName.lastIndexOf('.');
+        if (lastDot >= 0) {
+            simpleName = annotationName.substring(lastDot + 1);
+        }
+        
+        boolean isData = simpleName.equals("Data");
+        boolean isGetter = simpleName.equals("Getter");
+        boolean isSetter = simpleName.equals("Setter");
+        boolean isToString = simpleName.equals("ToString");
+        boolean isEqualsAndHashCode = simpleName.equals("EqualsAndHashCode");
+        boolean isNoArgsConstructor = simpleName.equals("NoArgsConstructor");
+        boolean isAllArgsConstructor = simpleName.equals("AllArgsConstructor");
+        
+        if (isData) {
+            isGetter = true;
+            isSetter = true;
+            isToString = true;
+            isEqualsAndHashCode = true;
         }
         
         String className = classDecl.getName();
@@ -80,23 +65,23 @@ public class DataAnnotationProcessor implements AnnotationProcessor {
             String fieldName = field.getName();
             Type fieldType = field.getType();
             
-            if (hasGetter) {
+            if (isGetter) {
                 ScriptMethod getter = createGetterMethod(fieldName, fieldType, scriptClass);
                 scriptClass.addMethod(getter);
             }
             
-            if (hasSetter) {
+            if (isSetter) {
                 ScriptMethod setter = createSetterMethod(fieldName, fieldType, scriptClass);
                 scriptClass.addMethod(setter);
             }
         }
         
-        if (hasToString) {
+        if (isToString) {
             ScriptMethod toStringMethod = createToStringMethod(classDecl, scriptClass);
             scriptClass.addMethod(toStringMethod);
         }
         
-        if (hasEqualsAndHashCode) {
+        if (isEqualsAndHashCode) {
             ScriptMethod equalsMethod = createEqualsMethod(classDecl, scriptClass);
             scriptClass.addMethod(equalsMethod);
             
@@ -104,15 +89,20 @@ public class DataAnnotationProcessor implements AnnotationProcessor {
             scriptClass.addMethod(hashCodeMethod);
         }
         
-        if (hasNoArgsConstructor) {
+        if (isNoArgsConstructor) {
             ScriptMethod noArgsConstructor = createNoArgsConstructor(className, scriptClass);
             scriptClass.addConstructor(noArgsConstructor);
         }
         
-        if (hasAllArgsConstructor) {
+        if (isAllArgsConstructor) {
             ScriptMethod allArgsConstructor = createAllArgsConstructor(classDecl, className, scriptClass);
             scriptClass.addConstructor(allArgsConstructor);
         }
+    }
+    
+    @Override
+    public int getPriority() {
+        return 100;
     }
     
     private ScriptMethod createGetterMethod(String fieldName, Type fieldType, ScriptClass declaringClass) {
