@@ -1208,6 +1208,13 @@ public class Interpreter implements ASTVisitor<Object> {
                 return ((StandardLibrary.StaticMethodHolder) var).invoke(args);
             }
         }
+
+        if (target == null && node.getTarget() == null) {
+            RuntimeObject thisObj = currentEnv.getThisObject();
+            if (thisObj != null) {
+                target = thisObj;
+            }
+        }
         
         if (target == null && node.getTarget() instanceof IdentifierExpression) {
             String varName = ((IdentifierExpression) node.getTarget()).getName();

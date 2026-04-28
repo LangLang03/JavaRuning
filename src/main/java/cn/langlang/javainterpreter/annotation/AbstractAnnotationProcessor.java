@@ -44,15 +44,14 @@ public abstract class AbstractAnnotationProcessor implements AnnotationProcessor
     
     public boolean supportsAnnotation(String annotationName) {
         if (annotationName == null) return false;
-        String simpleName = annotationName;
-        int lastDot = annotationName.lastIndexOf('.');
-        if (lastDot >= 0) {
-            simpleName = annotationName.substring(lastDot + 1);
-        }
         for (String supported : supportedAnnotationTypes) {
-            if (supported.equals(annotationName) ||
-                supported.equals(simpleName)) {
+            if (supported.equals(annotationName)) {
                 return true;
+            }
+            if (packageName != null && !packageName.isEmpty()) {
+                if ((packageName + "." + supported).equals(annotationName)) {
+                    return true;
+                }
             }
         }
         return false;

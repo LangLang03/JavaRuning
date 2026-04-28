@@ -906,14 +906,17 @@ public class Parser {
                 }
                 
                 expression = new MethodReferenceExpression(previous(), expression, typeArgs, methodName);
+            } else if (match(TokenType.PLUSPLUS)) {
+                expression = new UnaryExpression(previous(), TokenType.PLUSPLUS, expression, false);
+            } else if (match(TokenType.MINUSMINUS)) {
+                expression = new UnaryExpression(previous(), TokenType.MINUSMINUS, expression, false);
             } else {
                 break;
             }
         }
-        
         return expression;
     }
-    
+
     private Expression parseBinaryExpressionRest(Expression left, int precedence) {
         while (true) {
             TokenType op = peek().getType();
@@ -1585,14 +1588,18 @@ public class Parser {
                 }
                 
                 expression = new MethodReferenceExpression(previous(), expression, typeArgs, methodName);
+            } else if (match(TokenType.PLUSPLUS)) {
+                expression = new UnaryExpression(previous(), TokenType.PLUSPLUS, expression, false);
+            } else if (match(TokenType.MINUSMINUS)) {
+                expression = new UnaryExpression(previous(), TokenType.MINUSMINUS, expression, false);
             } else {
                 break;
             }
         }
-        
+
         return expression;
     }
-    
+
     private Expression parsePrimaryExpression() {
         if (match(TokenType.LPAREN)) {
             return parseParenthesizedOrCastExpression();
