@@ -21,6 +21,10 @@ public class Interpreter implements ASTVisitor<Object> {
         initializeBuiltInClasses();
     }
     
+    public Environment getGlobalEnvironment() {
+        return globalEnv;
+    }
+    
     private void initializeBuiltInClasses() {
         stdLib.initializeStandardClasses(globalEnv);
     }
@@ -623,17 +627,21 @@ public class Interpreter implements ASTVisitor<Object> {
     @Override
     public Object visitTryStatement(TryStatement node) {
         List<Object> resources = new ArrayList<>();
+        List<TryStatement.ResourceDeclaration> resourceDecls = node.getResources();
+        Throwable primaryException = null;
         
         try {
-            for (TryStatement.ResourceDeclaration resource : node.getResources()) {
+            for (TryStatement.ResourceDeclaration resource : resourceDecls) {
                 Object res = resource.getExpression().accept(this);
                 resources.add(res);
+                currentEnv.defineVariable(resource.getName(), res);
             }
             
             node.getTryBlock().accept(this);
         } catch (ReturnException | BreakException | ContinueException e) {
             throw e;
         } catch (RuntimeException e) {
+            primaryException = e.getCause() != null ? e.getCause() : e;
             boolean caught = false;
             
             for (CatchClause catchClause : node.getCatchClauses()) {
@@ -646,6 +654,7 @@ public class Interpreter implements ASTVisitor<Object> {
                         currentEnv.defineVariable(catchClause.getExceptionName(), actualException);
                         catchClause.getBody().accept(this);
                         caught = true;
+                        primaryException = null;
                         break;
                     } finally {
                         currentEnv = previous;
@@ -654,12 +663,46 @@ public class Interpreter implements ASTVisitor<Object> {
             }
             
             if (!caught) {
+                primaryException = e;
+            }
+        }
+        
+        for (int i = resources.size() - 1; i >= 0; i--) {
+            Object resource = resources.get(i);
+            try {
+                if (resource instanceof AutoCloseable) {
+                    ((AutoCloseable) resource).close();
+                } else if (resource instanceof RuntimeObject) {
+                    RuntimeObject runtimeObj = (RuntimeObject) resource;
+                    ScriptMethod closeMethod = runtimeObj.getScriptClass().getMethod("close", new ArrayList<>());
+                    if (closeMethod != null) {
+                        invokeMethod(runtimeObj, closeMethod, new ArrayList<>());
+                    }
+                }
+            } catch (Exception e) {
+                if (primaryException != null) {
+                    primaryException.addSuppressed(e);
+                } else {
+                    primaryException = e;
+                }
+            }
+        }
+        
+        if (node.getFinallyBlock() != null) {
+            try {
+                node.getFinallyBlock().accept(this);
+            } catch (RuntimeException e) {
+                if (primaryException != null) {
+                    e.getCause().addSuppressed(primaryException);
+                }
                 throw e;
             }
-        } finally {
-            if (node.getFinallyBlock() != null) {
-                node.getFinallyBlock().accept(this);
-            }
+        }
+        
+        if (primaryException instanceof RuntimeException) {
+            throw (RuntimeException) primaryException;
+        } else if (primaryException != null) {
+            throw new RuntimeException(primaryException);
         }
         
         return null;

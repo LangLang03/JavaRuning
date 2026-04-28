@@ -10,9 +10,25 @@ import java.nio.file.*;
 public class MainRunner {
     public static void main(String[] args) {
         try {
-            String source = new String(Files.readAllBytes(Paths.get(".trae/Main.java")));
+            String source = new String(Files.readAllBytes(Paths.get(".trae/Main.java"))).trim();
             System.out.println("=== Starting to parse Main.java ===");
             System.out.println("Source length: " + source.length() + " characters");
+            
+            boolean isScript = !source.startsWith("package ") && 
+                              !source.startsWith("import ") &&
+                              !source.startsWith("public class ") &&
+                              !source.startsWith("class ") &&
+                              !source.startsWith("public interface ") &&
+                              !source.startsWith("interface ") &&
+                              !source.startsWith("public enum ") &&
+                              !source.startsWith("enum ") &&
+                              !source.startsWith("public @interface ") &&
+                              !source.startsWith("@interface ");
+            
+            if (isScript) {
+                source = "public class Script { public static void main(String[] args) { " + source + " } }";
+                System.out.println("=== Script mode detected, wrapping in class ===");
+            }
             
             Lexer lexer = new Lexer(source);
             System.out.println("=== Lexing completed ===");
