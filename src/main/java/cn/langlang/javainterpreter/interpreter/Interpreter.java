@@ -47,6 +47,24 @@ public class Interpreter implements ASTVisitor<Object> {
         }
     }
     
+    public void interpretDeclarations(CompilationUnit unit) {
+        for (ImportDeclaration imp : unit.getImports()) {
+            imp.accept(this);
+        }
+
+        for (TypeDeclaration type : unit.getTypeDeclarations()) {
+            type.accept(this);
+        }
+    }
+    
+    public Object invokeStaticMethod(ScriptClass scriptClass, String methodName, List<Object> args) {
+        ScriptMethod method = scriptClass.getMethod(methodName, args);
+        if (method != null) {
+            return invokeMethod(null, method, args);
+        }
+        throw new RuntimeException("Static method not found: " + methodName);
+    }
+    
     @Override
     public Object visitCompilationUnit(CompilationUnit node) {
         for (ImportDeclaration imp : node.getImports()) {

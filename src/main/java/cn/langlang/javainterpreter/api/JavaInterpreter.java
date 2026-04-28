@@ -14,13 +14,65 @@ import java.util.function.*;
 public class JavaInterpreter {
     private final Interpreter interpreter;
     private final Environment globalEnv;
+    private final Map<String, CompilationUnit> loadedUnits;
+    private String mainClassName;
     
     public JavaInterpreter() {
         this.interpreter = new Interpreter();
         this.globalEnv = interpreter.getGlobalEnvironment();
+        this.loadedUnits = new HashMap<>();
+    }
+    
+    public void load(String source) {
+        String trimmedSource = source.trim();
+
+        java.util.regex.Pattern classPattern = java.util.regex.Pattern.compile(
+            "(?:^|\\s)(?:public\\s+)?(?:abstract\\s+)?(?:final\\s+)?class\\s+(\\w+)");
+        java.util.regex.Matcher classMatcher = classPattern.matcher(trimmedSource);
+        if (classMatcher.find()) {
+            mainClassName = classMatcher.group(1);
+        }
+
+        String processedSource = preprocessSource(source);
+
+        Lexer lexer = new Lexer(processedSource);
+        List<Token> tokens = lexer.scanTokens();
+
+        Parser parser = new Parser(tokens);
+        CompilationUnit ast = parser.parseCompilationUnit();
+
+        interpreter.interpretDeclarations(ast);
+        loadedUnits.put(source.hashCode() + "", ast);
     }
     
     public Object execute(String source) {
+        load(source);
+        return runMain();
+    }
+    
+    public Object executeFile(String filePath) throws IOException {
+        String source = new String(Files.readAllBytes(Paths.get(filePath)));
+        return execute(source);
+    }
+    
+    public Object runMain() {
+        if (mainClassName == null) {
+            return null;
+        }
+        ScriptClass mainClass = globalEnv.getClass(mainClassName);
+        if (mainClass == null) {
+            return null;
+        }
+        List<ScriptMethod> methods = mainClass.getMethods().get("main");
+        if (methods == null || methods.isEmpty()) {
+            return null;
+        }
+        Object[] emptyArgs = new Object[1];
+        emptyArgs[0] = new String[0];
+        return interpreter.invokeStaticMethod(mainClass, "main", Arrays.asList(emptyArgs));
+    }
+
+    private String preprocessSource(String source) {
         String trimmedSource = source.trim();
         
         java.util.regex.Pattern classPattern = java.util.regex.Pattern.compile(
@@ -55,21 +107,10 @@ public class JavaInterpreter {
                 body = source.substring(matcher.end());
             }
             
-            source = imports + "\npublic class Script { public static void main(String[] args) throws Exception { " + body + " } }";
+            return imports + "\npublic class Script { public static void main(String[] args) throws Exception { " + body + " } }";
         }
         
-        Lexer lexer = new Lexer(source);
-        List<Token> tokens = lexer.scanTokens();
-        
-        Parser parser = new Parser(tokens);
-        CompilationUnit ast = parser.parseCompilationUnit();
-        
-        return interpreter.interpret(ast);
-    }
-    
-    public Object executeFile(String filePath) throws IOException {
-        String source = new String(Files.readAllBytes(Paths.get(filePath)));
-        return execute(source);
+        return source;
     }
     
     public void registerVariable(String name, Object value) {
