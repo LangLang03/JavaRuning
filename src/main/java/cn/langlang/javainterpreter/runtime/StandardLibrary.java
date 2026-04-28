@@ -27,6 +27,7 @@ public class StandardLibrary {
     private void initializeSystem(Environment env) {
         env.defineVariable("out", System.out);
         env.defineVariable("err", System.err);
+        env.defineVariable("System", new SystemHolder());
     }
     
     private void initializeMath(Environment env) {
@@ -62,6 +63,10 @@ public class StandardLibrary {
     public Object invokeMethod(Object target, String methodName, List<Object> args) {
         if (target instanceof StaticMethodHolder) {
             return ((StaticMethodHolder) target).invoke(args);
+        }
+        
+        if (target instanceof SystemHolder) {
+            return ((SystemHolder) target).invokeMethod(methodName, args);
         }
         
         if (target instanceof Class) {
@@ -472,6 +477,9 @@ public class StandardLibrary {
     
     public Object createObject(String typeName, List<Object> args) {
         switch (typeName) {
+            case "Thread":
+            case "java.lang.Thread":
+                return createThread(args);
             case "ArrayList":
             case "java.util.ArrayList":
                 return new ArrayList<>();
@@ -584,6 +592,47 @@ public class StandardLibrary {
         }
     }
     
+    private Thread createThread(List<Object> args) {
+        if (args.isEmpty()) {
+            return new Thread();
+        }
+        
+        Object target = args.get(0);
+        
+        if (target instanceof LambdaObject) {
+            LambdaObject lambda = (LambdaObject) target;
+            Runnable runnable = () -> invokeLambda(lambda, new ArrayList<>());
+            return new Thread(runnable);
+        }
+        
+        if (target instanceof MethodReferenceObject) {
+            MethodReferenceObject methodRef = (MethodReferenceObject) target;
+            Runnable runnable = () -> invokeMethodReference(methodRef, new ArrayList<>());
+            return new Thread(runnable);
+        }
+        
+        if (target instanceof RuntimeObject) {
+            RuntimeObject obj = (RuntimeObject) target;
+            ScriptMethod runMethod = obj.getScriptClass().getMethod("run", new ArrayList<>());
+            if (runMethod != null) {
+                Runnable runnable = () -> {
+                    try {
+                        interpreter.invokeMethod(obj, runMethod, new ArrayList<>());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                };
+                return new Thread(runnable);
+            }
+        }
+        
+        if (target instanceof Runnable) {
+            return new Thread((Runnable) target);
+        }
+        
+        return new Thread();
+    }
+    
     public ScriptClass getStandardClass(String name) {
         return standardClasses.get(name);
     }
@@ -617,6 +666,24 @@ public class StandardLibrary {
         public Object getField(String name) {
             if (name.equals("out")) return System.out;
             if (name.equals("err")) return System.err;
+            return null;
+        }
+        
+        public Object invokeMethod(String methodName, List<Object> args) {
+            if (methodName.equals("currentTimeMillis")) {
+                return System.currentTimeMillis();
+            }
+            if (methodName.equals("nanoTime")) {
+                return System.nanoTime();
+            }
+            if (methodName.equals("exit")) {
+                System.exit(((Number) args.get(0)).intValue());
+                return null;
+            }
+            if (methodName.equals("gc")) {
+                System.gc();
+                return null;
+            }
             return null;
         }
     }
@@ -715,6 +782,59 @@ public class StandardLibrary {
         }
         
         return null;
+    }
+    
+    private Object invokeMethodReference(MethodReferenceObject methodRefObj, List<Object> args) {
+        MethodReferenceExpression methodRef = methodRefObj.getMethodRef();
+        Expression targetExpr = methodRef.getTarget();
+        String methodName = methodRef.getMethodName();
+        
+        if (methodName.equals("new")) {
+            if (targetExpr instanceof ClassLiteralExpression) {
+                cn.langlang.javainterpreter.ast.Type type = ((ClassLiteralExpression) targetExpr).getType();
+                if (type.getArrayDimensions() > 0 || type.getName().equals("int") || 
+                    type.getName().equals("long") || type.getName().equals("double")) {
+                    int size = args.isEmpty() ? 0 : ((Number) args.get(0)).intValue();
+                    return createArray(type, size);
+                }
+            }
+        }
+        
+        if (targetExpr != null) {
+            Object targetObj = targetExpr.accept(interpreter);
+            if (targetObj instanceof ScriptClass) {
+                ScriptClass scriptClass = (ScriptClass) targetObj;
+                ScriptMethod method = scriptClass.getMethod(methodName, args);
+                if (method != null && method.isStatic()) {
+                    return interpreter.invokeMethod(null, method, args);
+                }
+            }
+            if (targetObj instanceof RuntimeObject) {
+                RuntimeObject runtimeObj = (RuntimeObject) targetObj;
+                ScriptMethod method = runtimeObj.getScriptClass().getMethod(methodName, args);
+                if (method != null) {
+                    return interpreter.invokeMethod(runtimeObj, method, args);
+                }
+            }
+            return invokeMethod(targetObj, methodName, args);
+        }
+        
+        return null;
+    }
+    
+    private Object createArray(cn.langlang.javainterpreter.ast.Type type, int size) {
+        String typeName = type.getName();
+        int dims = type.getArrayDimensions();
+        
+        if (dims > 1 || typeName.equals("int")) return new int[size];
+        if (typeName.equals("long")) return new long[size];
+        if (typeName.equals("double")) return new double[size];
+        if (typeName.equals("float")) return new float[size];
+        if (typeName.equals("boolean")) return new boolean[size];
+        if (typeName.equals("char")) return new char[size];
+        if (typeName.equals("byte")) return new byte[size];
+        if (typeName.equals("short")) return new short[size];
+        return new Object[size];
     }
     
     private Object invokeClassMethod(Class<?> clazz, String methodName, List<Object> args) {

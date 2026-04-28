@@ -17,6 +17,7 @@ public class ScriptClass {
     private final List<InitializerBlock> instanceInitializers;
     private final TypeDeclaration astNode;
     private boolean initialized;
+    private ScriptClass enclosingClass;
     
     public ScriptClass(String name, String qualifiedName, int modifiers, 
                       ScriptClass superClass, List<ScriptClass> interfaces,
@@ -47,9 +48,14 @@ public class ScriptClass {
     public List<InitializerBlock> getInstanceInitializers() { return instanceInitializers; }
     public TypeDeclaration getAstNode() { return astNode; }
     public boolean isInitialized() { return initialized; }
+    public ScriptClass getEnclosingClass() { return enclosingClass; }
     
     public void setInitialized(boolean initialized) {
         this.initialized = initialized;
+    }
+    
+    public void setEnclosingClass(ScriptClass enclosingClass) {
+        this.enclosingClass = enclosingClass;
     }
     
     public void addField(ScriptField field) {

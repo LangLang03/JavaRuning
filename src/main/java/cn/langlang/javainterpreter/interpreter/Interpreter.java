@@ -106,6 +106,28 @@ public class Interpreter implements ASTVisitor<Object> {
             initializeClass(scriptClass.getSuperClass());
         }
         
+        for (ScriptField field : scriptClass.getFields().values()) {
+            if (field.isStatic()) {
+                String fieldKey = scriptClass.getName() + "." + field.getName();
+                if (!globalEnv.hasVariable(fieldKey)) {
+                    Object value = null;
+                    if (field.getInitializer() != null) {
+                        Environment previous = currentEnv;
+                        currentEnv = currentEnv.push();
+                        currentEnv.setCurrentClass(scriptClass);
+                        try {
+                            value = field.getInitializer().accept(this);
+                        } finally {
+                            currentEnv = previous;
+                        }
+                    } else {
+                        value = getDefaultValue(field.getType());
+                    }
+                    globalEnv.defineVariable(fieldKey, value);
+                }
+            }
+        }
+        
         for (InitializerBlock init : scriptClass.getStaticInitializers()) {
             Environment previous = currentEnv;
             currentEnv = currentEnv.push();
@@ -119,6 +141,20 @@ public class Interpreter implements ASTVisitor<Object> {
         }
         
         scriptClass.setInitialized(true);
+    }
+    
+    private Object getDefaultValue(cn.langlang.javainterpreter.ast.Type type) {
+        if (type == null) return null;
+        String typeName = type.getName();
+        if (typeName.equals("int")) return 0;
+        if (typeName.equals("long")) return 0L;
+        if (typeName.equals("double")) return 0.0;
+        if (typeName.equals("float")) return 0.0f;
+        if (typeName.equals("boolean")) return false;
+        if (typeName.equals("char")) return '\0';
+        if (typeName.equals("byte")) return (byte) 0;
+        if (typeName.equals("short")) return (short) 0;
+        return null;
     }
     
     private ScriptMethod findMainMethod(String className) {
@@ -921,6 +957,19 @@ public class Interpreter implements ASTVisitor<Object> {
     public Object visitIdentifierExpression(IdentifierExpression node) {
         String name = node.getName();
         
+        ScriptClass currentClass = currentEnv.getCurrentClass();
+        while (currentClass != null) {
+            ScriptField field = currentClass.getField(name);
+            if (field != null && field.isStatic()) {
+                initializeClass(currentClass);
+                String fieldKey = currentClass.getName() + "." + name;
+                if (globalEnv.hasVariable(fieldKey)) {
+                    return globalEnv.getVariable(fieldKey);
+                }
+            }
+            currentClass = currentClass.getEnclosingClass();
+        }
+        
         if (currentEnv.hasVariable(name)) {
             return currentEnv.getVariable(name);
         }
@@ -932,14 +981,6 @@ public class Interpreter implements ASTVisitor<Object> {
         RuntimeObject thisObj = currentEnv.getThisObject();
         if (thisObj != null && thisObj.hasField(name)) {
             return thisObj.getField(name);
-        }
-        
-        ScriptClass currentClass = currentEnv.getCurrentClass();
-        if (currentClass != null) {
-            ScriptField field = currentClass.getField(name);
-            if (field != null && field.isStatic()) {
-                return currentClass.getFields().get(name);
-            }
         }
         
         return stdLib.resolveStaticImport(name);
@@ -1131,12 +1172,29 @@ public class Interpreter implements ASTVisitor<Object> {
     
     private void assignToTarget(Expression target, Object value) {
         if (target instanceof IdentifierExpression) {
-            currentEnv.setVariable(((IdentifierExpression) target).getName(), value);
+            String name = ((IdentifierExpression) target).getName();
+            
+            ScriptClass currentClass = currentEnv.getCurrentClass();
+            while (currentClass != null) {
+                ScriptField field = currentClass.getField(name);
+                if (field != null && field.isStatic()) {
+                    String fieldKey = currentClass.getName() + "." + name;
+                    globalEnv.defineVariable(fieldKey, value);
+                    return;
+                }
+                currentClass = currentClass.getEnclosingClass();
+            }
+            
+            currentEnv.setVariable(name, value);
         } else if (target instanceof FieldAccessExpression) {
             FieldAccessExpression fieldAccess = (FieldAccessExpression) target;
             Object obj = fieldAccess.getTarget().accept(this);
             if (obj instanceof RuntimeObject) {
                 ((RuntimeObject) obj).setField(fieldAccess.getFieldName(), value);
+            } else if (obj instanceof ScriptClass) {
+                ScriptClass scriptClass = (ScriptClass) obj;
+                String fieldKey = scriptClass.getName() + "." + fieldAccess.getFieldName();
+                globalEnv.defineVariable(fieldKey, value);
             }
         } else if (target instanceof ArrayAccessExpression) {
             ArrayAccessExpression arrayAccess = (ArrayAccessExpression) target;
@@ -1272,6 +1330,7 @@ public class Interpreter implements ASTVisitor<Object> {
         
         if (target instanceof ScriptClass) {
             ScriptClass scriptClass = (ScriptClass) target;
+            initializeClass(scriptClass);
             ScriptMethod method = scriptClass.getMethod(node.getMethodName(), args);
             if (method != null && method.isStatic()) {
                 return invokeMethod(null, method, args);
@@ -1325,8 +1384,13 @@ public class Interpreter implements ASTVisitor<Object> {
     private Object invokeLambda(LambdaObject lambda, List<Object> args) {
         LambdaExpression lambdaExpr = lambda.getLambda();
         Environment closureEnv = lambda.getClosureEnv();
+        ScriptClass closureClass = lambda.getClosureClass();
         Environment previous = currentEnv;
         currentEnv = new Environment(closureEnv != null ? closureEnv : globalEnv);
+        
+        if (closureClass != null) {
+            currentEnv.setCurrentClass(closureClass);
+        }
         
         try {
             List<LambdaExpression.LambdaParameter> params = lambdaExpr.getParameters();
@@ -1427,7 +1491,7 @@ public class Interpreter implements ASTVisitor<Object> {
         return new Object[size];
     }
     
-    private Object invokeMethod(RuntimeObject target, ScriptMethod method, List<Object> args) {
+    public Object invokeMethod(RuntimeObject target, ScriptMethod method, List<Object> args) {
         if (method instanceof NativeMethod) {
             NativeMethod nativeMethod = (NativeMethod) method;
             Object[] fullArgs;
@@ -1560,6 +1624,12 @@ public class Interpreter implements ASTVisitor<Object> {
     
     @Override
     public Object visitNewObjectExpression(NewObjectExpression node) {
+        List<ASTNode> anonymousClassBody = node.getAnonymousClassBody();
+        
+        if (anonymousClassBody != null && !anonymousClassBody.isEmpty()) {
+            return createAnonymousClassInstance(node);
+        }
+        
         ScriptClass scriptClass = resolveClass(node.getType());
         
         if (scriptClass == null) {
@@ -1584,6 +1654,186 @@ public class Interpreter implements ASTVisitor<Object> {
         }
         
         return instance;
+    }
+    
+    private Object createAnonymousClassInstance(NewObjectExpression node) {
+        Type baseType = node.getType();
+        List<ASTNode> anonymousClassBody = node.getAnonymousClassBody();
+        
+        ScriptClass baseClass = resolveClass(baseType);
+        ScriptClass superClass = null;
+        List<ScriptClass> interfaces = new ArrayList<>();
+        
+        if (baseClass != null) {
+            if (baseClass.getAstNode() instanceof InterfaceDeclaration) {
+                interfaces.add(baseClass);
+            } else {
+                superClass = baseClass;
+            }
+        } else {
+            String typeName = baseType.getName();
+            if (typeName.equals("Runnable") || typeName.equals("java.lang.Runnable")) {
+                ScriptClass runnableInterface = createRunnableInterface();
+                interfaces.add(runnableInterface);
+            } else if (typeName.equals("Thread") || typeName.equals("java.lang.Thread")) {
+                superClass = createClassFromJavaClass(Thread.class);
+            } else {
+                try {
+                    String fullClassName = typeName;
+                    if (!typeName.contains(".")) {
+                        fullClassName = "java.lang." + typeName;
+                    }
+                    Class<?> clazz = Class.forName(fullClassName);
+                    if (clazz.isInterface()) {
+                        ScriptClass iface = createInterfaceFromClass(clazz);
+                        interfaces.add(iface);
+                    } else {
+                        superClass = createClassFromJavaClass(clazz);
+                    }
+                } catch (ClassNotFoundException e) {
+                    throw new RuntimeException("Cannot resolve type for anonymous class: " + typeName);
+                }
+            }
+        }
+        
+        String anonymousClassName = "AnonymousClass_" + System.nanoTime();
+        ScriptClass anonymousClass = new ScriptClass(
+            anonymousClassName, anonymousClassName, 0, 
+            superClass, interfaces, null
+        );
+        
+        ScriptClass enclosingClass = currentEnv.getCurrentClass();
+        if (enclosingClass != null) {
+            anonymousClass.setEnclosingClass(enclosingClass);
+        }
+        
+        for (ASTNode member : anonymousClassBody) {
+            if (member instanceof FieldDeclaration) {
+                FieldDeclaration field = (FieldDeclaration) member;
+                ScriptField scriptField = new ScriptField(
+                    field.getName(), field.getModifiers(), field.getType(),
+                    field.getInitializer(), anonymousClass, field.getAnnotations()
+                );
+                anonymousClass.addField(scriptField);
+            } else if (member instanceof MethodDeclaration) {
+                MethodDeclaration method = (MethodDeclaration) member;
+                ScriptMethod scriptMethod = new ScriptMethod(
+                    method.getName(), method.getModifiers(), method.getReturnType(),
+                    method.getParameters(), method.isVarArgs(), method.getBody(),
+                    anonymousClass, false, method.isDefault(), method.getAnnotations()
+                );
+                anonymousClass.addMethod(scriptMethod);
+            } else if (member instanceof ConstructorDeclaration) {
+                ConstructorDeclaration constructor = (ConstructorDeclaration) member;
+                ScriptMethod scriptMethod = new ScriptMethod(
+                    constructor.getName(), constructor.getModifiers(), null,
+                    constructor.getParameters(), false, constructor.getBody(),
+                    anonymousClass, true, false, constructor.getAnnotations()
+                );
+                anonymousClass.addConstructor(scriptMethod);
+            } else if (member instanceof InitializerBlock) {
+                InitializerBlock init = (InitializerBlock) member;
+                if (init.isStatic()) {
+                    anonymousClass.addStaticInitializer(init);
+                } else {
+                    anonymousClass.addInstanceInitializer(init);
+                }
+            }
+        }
+        
+        globalEnv.defineClass(anonymousClassName, anonymousClass);
+        loadedClasses.put(anonymousClassName, anonymousClass);
+        
+        RuntimeObject instance = new RuntimeObject(anonymousClass);
+        
+        initializeFields(anonymousClass, instance);
+        
+        runInstanceInitializers(anonymousClass, instance);
+        
+        List<Object> args = new ArrayList<>();
+        for (Expression arg : node.getArguments()) {
+            args.add(arg.accept(this));
+        }
+        
+        ScriptMethod constructor = findConstructor(anonymousClass, args);
+        if (constructor != null) {
+            invokeMethod(instance, constructor, args);
+        } else if (superClass != null) {
+            constructor = findConstructor(superClass, args);
+            if (constructor != null) {
+                invokeMethod(instance, constructor, args);
+            }
+        }
+        
+        return instance;
+    }
+    
+    private ScriptClass createRunnableInterface() {
+        ScriptClass runnableInterface = new ScriptClass(
+            "Runnable", "java.lang.Runnable", Modifier.ABSTRACT | Modifier.INTERFACE,
+            null, new ArrayList<>(), null
+        );
+        
+        List<ParameterDeclaration> params = new ArrayList<>();
+        Type voidType = new Type(null, "void", new ArrayList<>(), 0, new ArrayList<>());
+        ScriptMethod runMethod = new ScriptMethod(
+            "run", Modifier.PUBLIC | Modifier.ABSTRACT, voidType,
+            params, false, null, runnableInterface, false, false, new ArrayList<>()
+        );
+        runnableInterface.addMethod(runMethod);
+        
+        return runnableInterface;
+    }
+    
+    private ScriptClass createInterfaceFromClass(Class<?> clazz) {
+        ScriptClass iface = new ScriptClass(
+            clazz.getSimpleName(), clazz.getName(), Modifier.INTERFACE,
+            null, new ArrayList<>(), null
+        );
+        
+        for (java.lang.reflect.Method method : clazz.getMethods()) {
+            if (method.isDefault() || method.isSynthetic()) continue;
+            
+            List<ParameterDeclaration> params = new ArrayList<>();
+            java.lang.reflect.Parameter[] reflectParams = method.getParameters();
+            for (java.lang.reflect.Parameter param : reflectParams) {
+                cn.langlang.javainterpreter.ast.Type paramType = createTypeFromJavaType(param.getType());
+                params.add(new ParameterDeclaration(null, 0, paramType, param.getName(), 
+                    false, new ArrayList<>()));
+            }
+            
+            cn.langlang.javainterpreter.ast.Type returnType = createTypeFromJavaType(method.getReturnType());
+            ScriptMethod scriptMethod = new ScriptMethod(
+                method.getName(), Modifier.PUBLIC | Modifier.ABSTRACT, returnType,
+                params, method.isVarArgs(), null, iface, false, false, new ArrayList<>()
+            );
+            iface.addMethod(scriptMethod);
+        }
+        
+        return iface;
+    }
+    
+    private ScriptClass createClassFromJavaClass(Class<?> clazz) {
+        ScriptClass scriptClass = new ScriptClass(
+            clazz.getSimpleName(), clazz.getName(), 0,
+            null, new ArrayList<>(), null
+        );
+        return scriptClass;
+    }
+    
+    private cn.langlang.javainterpreter.ast.Type createTypeFromJavaType(Class<?> type) {
+        String typeName;
+        if (type.isPrimitive()) {
+            typeName = type.getName();
+        } else if (type.isArray()) {
+            Class<?> componentType = type.getComponentType();
+            cn.langlang.javainterpreter.ast.Type component = createTypeFromJavaType(componentType);
+            return new cn.langlang.javainterpreter.ast.Type(null, component.getName(), 
+                component.getTypeArguments(), component.getArrayDimensions() + 1, new ArrayList<>());
+        } else {
+            typeName = type.getSimpleName();
+        }
+        return new cn.langlang.javainterpreter.ast.Type(null, typeName, new ArrayList<>(), 0, new ArrayList<>());
     }
     
     private void initializeFields(ScriptClass scriptClass, RuntimeObject instance) {

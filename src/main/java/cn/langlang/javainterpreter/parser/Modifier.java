@@ -13,6 +13,7 @@ public class Modifier {
     public static final int ABSTRACT = 1 << 9;
     public static final int STRICTFP = 1 << 10;
     public static final int DEFAULT = 1 << 11;
+    public static final int INTERFACE = 1 << 12;
     
     public static String toString(int modifiers) {
         StringBuilder sb = new StringBuilder();
@@ -28,6 +29,7 @@ public class Modifier {
         if ((modifiers & ABSTRACT) != 0) sb.append("abstract ");
         if ((modifiers & STRICTFP) != 0) sb.append("strictfp ");
         if ((modifiers & DEFAULT) != 0) sb.append("default ");
+        if ((modifiers & INTERFACE) != 0) sb.append("interface ");
         return sb.toString().trim();
     }
 }
