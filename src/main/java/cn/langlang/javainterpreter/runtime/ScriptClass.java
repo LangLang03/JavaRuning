@@ -1,0 +1,181 @@
+package cn.langlang.javainterpreter.runtime;
+
+import cn.langlang.javainterpreter.ast.*;
+import cn.langlang.javainterpreter.parser.Modifier;
+import java.util.*;
+
+public class ScriptClass {
+    private final String name;
+    private final String qualifiedName;
+    private final int modifiers;
+    private final ScriptClass superClass;
+    private final List<ScriptClass> interfaces;
+    private final Map<String, ScriptField> fields;
+    private final Map<String, List<ScriptMethod>> methods;
+    private final List<ScriptMethod> constructors;
+    private final List<InitializerBlock> staticInitializers;
+    private final List<InitializerBlock> instanceInitializers;
+    private final TypeDeclaration astNode;
+    private boolean initialized;
+    
+    public ScriptClass(String name, String qualifiedName, int modifiers, 
+                      ScriptClass superClass, List<ScriptClass> interfaces,
+                      TypeDeclaration astNode) {
+        this.name = name;
+        this.qualifiedName = qualifiedName;
+        this.modifiers = modifiers;
+        this.superClass = superClass;
+        this.interfaces = interfaces != null ? interfaces : new ArrayList<>();
+        this.fields = new HashMap<>();
+        this.methods = new HashMap<>();
+        this.constructors = new ArrayList<>();
+        this.staticInitializers = new ArrayList<>();
+        this.instanceInitializers = new ArrayList<>();
+        this.astNode = astNode;
+        this.initialized = false;
+    }
+    
+    public String getName() { return name; }
+    public String getQualifiedName() { return qualifiedName; }
+    public int getModifiers() { return modifiers; }
+    public ScriptClass getSuperClass() { return superClass; }
+    public List<ScriptClass> getInterfaces() { return interfaces; }
+    public Map<String, ScriptField> getFields() { return fields; }
+    public Map<String, List<ScriptMethod>> getMethods() { return methods; }
+    public List<ScriptMethod> getConstructors() { return constructors; }
+    public List<InitializerBlock> getStaticInitializers() { return staticInitializers; }
+    public List<InitializerBlock> getInstanceInitializers() { return instanceInitializers; }
+    public TypeDeclaration getAstNode() { return astNode; }
+    public boolean isInitialized() { return initialized; }
+    
+    public void setInitialized(boolean initialized) {
+        this.initialized = initialized;
+    }
+    
+    public void addField(ScriptField field) {
+        fields.put(field.getName(), field);
+    }
+    
+    public void addMethod(ScriptMethod method) {
+        methods.computeIfAbsent(method.getName(), k -> new ArrayList<>()).add(method);
+    }
+    
+    public void addConstructor(ScriptMethod constructor) {
+        constructors.add(constructor);
+    }
+    
+    public void addStaticInitializer(InitializerBlock block) {
+        staticInitializers.add(block);
+    }
+    
+    public void addInstanceInitializer(InitializerBlock block) {
+        instanceInitializers.add(block);
+    }
+    
+    public ScriptField getField(String name) {
+        ScriptField field = fields.get(name);
+        if (field == null && superClass != null) {
+            return superClass.getField(name);
+        }
+        return field;
+    }
+    
+    public List<ScriptMethod> getMethods(String name) {
+        List<ScriptMethod> result = new ArrayList<>();
+        List<ScriptMethod> localMethods = methods.get(name);
+        if (localMethods != null) {
+            result.addAll(localMethods);
+        }
+        if (superClass != null) {
+            result.addAll(superClass.getMethods(name));
+        }
+        return result;
+    }
+    
+    public ScriptMethod getMethod(String name, List<Object> args) {
+        List<ScriptMethod> candidates = getMethods(name);
+        ScriptMethod bestMatch = null;
+        int bestScore = -1;
+        
+        for (ScriptMethod method : candidates) {
+            int score = computeMatchScore(method, args);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = method;
+            }
+        }
+        
+        return bestMatch;
+    }
+    
+    private int computeMatchScore(ScriptMethod method, List<Object> args) {
+        List<ParameterDeclaration> params = method.getParameters();
+        if (params.size() != args.size() && !method.isVarArgs()) {
+            return -1;
+        }
+        
+        int score = 0;
+        for (int i = 0; i < args.size(); i++) {
+            Object arg = args.get(i);
+            Type paramType = i < params.size() ? params.get(i).getType() : params.get(params.size() - 1).getType();
+            
+            if (isTypeCompatible(arg, paramType)) {
+                score++;
+            } else {
+                return -1;
+            }
+        }
+        
+        return score;
+    }
+    
+    private boolean isTypeCompatible(Object value, Type type) {
+        if (value == null) {
+            return !isPrimitiveType(type.getName());
+        }
+        
+        String typeName = type.getName();
+        
+        if (isPrimitiveType(typeName)) {
+            return isPrimitiveCompatible(value, typeName);
+        }
+        
+        return true;
+    }
+    
+    private boolean isPrimitiveType(String typeName) {
+        return typeName.equals("int") || typeName.equals("long") || 
+               typeName.equals("short") || typeName.equals("byte") ||
+               typeName.equals("char") || typeName.equals("boolean") ||
+               typeName.equals("float") || typeName.equals("double");
+    }
+    
+    private boolean isPrimitiveCompatible(Object value, String typeName) {
+        if (typeName.equals("int")) return value instanceof Integer;
+        if (typeName.equals("long")) return value instanceof Long || value instanceof Integer;
+        if (typeName.equals("short")) return value instanceof Short || value instanceof Integer;
+        if (typeName.equals("byte")) return value instanceof Byte || value instanceof Integer;
+        if (typeName.equals("char")) return value instanceof Character;
+        if (typeName.equals("boolean")) return value instanceof Boolean;
+        if (typeName.equals("float")) return value instanceof Float || value instanceof Double;
+        if (typeName.equals("double")) return value instanceof Double || value instanceof Float;
+        return false;
+    }
+    
+    public boolean isAssignableFrom(ScriptClass other) {
+        if (this == other) return true;
+        if (other == null) return false;
+        
+        if (other.superClass != null && isAssignableFrom(other.superClass)) {
+            return true;
+        }
+        
+        for (ScriptClass iface : other.interfaces) {
+            if (isAssignableFrom(iface)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+}
