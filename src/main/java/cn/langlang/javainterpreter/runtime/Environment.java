@@ -8,6 +8,7 @@ public class Environment {
     private final Map<String, ScriptClass> classes;
     private RuntimeObject thisObject;
     private ScriptClass currentClass;
+    private boolean thisObjectSet;
     
     public Environment() {
         this(null);
@@ -17,6 +18,7 @@ public class Environment {
         this.parent = parent;
         this.variables = new HashMap<>();
         this.classes = new HashMap<>();
+        this.thisObjectSet = false;
     }
     
     public Object getVariable(String name) {
@@ -76,7 +78,7 @@ public class Environment {
     }
     
     public RuntimeObject getThisObject() {
-        if (thisObject != null) {
+        if (thisObjectSet) {
             return thisObject;
         }
         if (parent != null) {
@@ -87,6 +89,7 @@ public class Environment {
     
     public void setThisObject(RuntimeObject thisObject) {
         this.thisObject = thisObject;
+        this.thisObjectSet = true;
     }
     
     public ScriptClass getCurrentClass() {

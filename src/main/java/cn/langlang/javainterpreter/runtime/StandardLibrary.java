@@ -32,20 +32,34 @@ public class StandardLibrary {
     
     private void initializeMath(Environment env) {
         Map<String, Object> mathMethods = new HashMap<>();
-        mathMethods.put("abs", (Function<Double, Double>) Math::abs);
-        mathMethods.put("max", (BiFunction<Double, Double, Double>) Math::max);
-        mathMethods.put("min", (BiFunction<Double, Double, Double>) Math::min);
-        mathMethods.put("sqrt", (Function<Double, Double>) Math::sqrt);
-        mathMethods.put("pow", (BiFunction<Double, Double, Double>) Math::pow);
-        mathMethods.put("sin", (Function<Double, Double>) Math::sin);
-        mathMethods.put("cos", (Function<Double, Double>) Math::cos);
-        mathMethods.put("tan", (Function<Double, Double>) Math::tan);
-        mathMethods.put("log", (Function<Double, Double>) Math::log);
-        mathMethods.put("exp", (Function<Double, Double>) Math::exp);
-        mathMethods.put("floor", (Function<Double, Double>) Math::floor);
-        mathMethods.put("ceil", (Function<Double, Double>) Math::ceil);
-        mathMethods.put("round", (Function<Double, Long>) Math::round);
-        mathMethods.put("random", (Supplier<Double>) Math::random);
+        mathMethods.put("abs", (java.util.function.Function<Object, Object>) arg -> {
+            if (arg instanceof Integer) return Math.abs((Integer) arg);
+            if (arg instanceof Long) return Math.abs((Long) arg);
+            if (arg instanceof Double) return Math.abs((Double) arg);
+            if (arg instanceof Float) return Math.abs((Float) arg);
+            return Math.abs(((Number) arg).doubleValue());
+        });
+        mathMethods.put("max", (java.util.function.BiFunction<Object, Object, Object>) (a, b) -> {
+            if (a instanceof Integer && b instanceof Integer) return Math.max((Integer) a, (Integer) b);
+            if (a instanceof Long && b instanceof Long) return Math.max((Long) a, (Long) b);
+            return Math.max(((Number) a).doubleValue(), ((Number) b).doubleValue());
+        });
+        mathMethods.put("min", (java.util.function.BiFunction<Object, Object, Object>) (a, b) -> {
+            if (a instanceof Integer && b instanceof Integer) return Math.min((Integer) a, (Integer) b);
+            if (a instanceof Long && b instanceof Long) return Math.min((Long) a, (Long) b);
+            return Math.min(((Number) a).doubleValue(), ((Number) b).doubleValue());
+        });
+        mathMethods.put("sqrt", (java.util.function.Function<Object, Object>) arg -> Math.sqrt(((Number) arg).doubleValue()));
+        mathMethods.put("pow", (java.util.function.BiFunction<Object, Object, Object>) (a, b) -> Math.pow(((Number) a).doubleValue(), ((Number) b).doubleValue()));
+        mathMethods.put("sin", (java.util.function.Function<Object, Object>) arg -> Math.sin(((Number) arg).doubleValue()));
+        mathMethods.put("cos", (java.util.function.Function<Object, Object>) arg -> Math.cos(((Number) arg).doubleValue()));
+        mathMethods.put("tan", (java.util.function.Function<Object, Object>) arg -> Math.tan(((Number) arg).doubleValue()));
+        mathMethods.put("log", (java.util.function.Function<Object, Object>) arg -> Math.log(((Number) arg).doubleValue()));
+        mathMethods.put("exp", (java.util.function.Function<Object, Object>) arg -> Math.exp(((Number) arg).doubleValue()));
+        mathMethods.put("floor", (java.util.function.Function<Object, Object>) arg -> Math.floor(((Number) arg).doubleValue()));
+        mathMethods.put("ceil", (java.util.function.Function<Object, Object>) arg -> Math.ceil(((Number) arg).doubleValue()));
+        mathMethods.put("round", (java.util.function.Function<Object, Object>) arg -> Math.round(((Number) arg).doubleValue()));
+        mathMethods.put("random", (java.util.function.Supplier<Double>) Math::random);
         mathMethods.put("PI", Math.PI);
         mathMethods.put("E", Math.E);
         env.defineVariable("Math", mathMethods);
@@ -99,6 +113,16 @@ public class StandardLibrary {
         
         if (target instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) target;
+            Object methodValue = map.get(methodName);
+            if (methodValue != null) {
+                if (methodValue instanceof java.util.function.Function) {
+                    return ((java.util.function.Function) methodValue).apply(args.get(0));
+                } else if (methodValue instanceof java.util.function.BiFunction) {
+                    return ((java.util.function.BiFunction) methodValue).apply(args.get(0), args.get(1));
+                } else if (methodValue instanceof java.util.function.Supplier) {
+                    return ((java.util.function.Supplier) methodValue).get();
+                }
+            }
             if (methodName.equals("get")) {
                 return map.get(args.get(0));
             } else if (methodName.equals("put")) {
@@ -396,6 +420,99 @@ public class StandardLibrary {
             }
         }
         
+        if (target instanceof java.io.InputStream) {
+            java.io.InputStream is = (java.io.InputStream) target;
+            try {
+                if (methodName.equals("read")) {
+                    if (args.isEmpty()) {
+                        return is.read();
+                    } else if (args.size() == 1 && args.get(0) instanceof byte[]) {
+                        return is.read((byte[]) args.get(0));
+                    } else if (args.size() == 3 && args.get(0) instanceof byte[]) {
+                        return is.read((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2));
+                    }
+                } else if (methodName.equals("available")) {
+                    return is.available();
+                } else if (methodName.equals("close")) {
+                    is.close();
+                    return null;
+                } else if (methodName.equals("skip")) {
+                    return is.skip((Long) args.get(0));
+                }
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        
+        if (target instanceof java.io.OutputStream) {
+            java.io.OutputStream os = (java.io.OutputStream) target;
+            try {
+                if (methodName.equals("write")) {
+                    if (args.size() == 1) {
+                        Object arg = args.get(0);
+                        if (arg instanceof Integer) {
+                            os.write((Integer) arg);
+                        } else if (arg instanceof byte[]) {
+                            os.write((byte[]) arg);
+                        }
+                    } else if (args.size() == 3 && args.get(0) instanceof byte[]) {
+                        os.write((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2));
+                    }
+                    return null;
+                } else if (methodName.equals("flush")) {
+                    os.flush();
+                    return null;
+                } else if (methodName.equals("close")) {
+                    os.close();
+                    return null;
+                }
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        
+        if (target instanceof java.net.Socket) {
+            java.net.Socket socket = (java.net.Socket) target;
+            try {
+                if (methodName.equals("getInputStream")) {
+                    return socket.getInputStream();
+                } else if (methodName.equals("getOutputStream")) {
+                    return socket.getOutputStream();
+                } else if (methodName.equals("close")) {
+                    socket.close();
+                    return null;
+                } else if (methodName.equals("setSoTimeout")) {
+                    socket.setSoTimeout((Integer) args.get(0));
+                    return null;
+                } else if (methodName.equals("setTcpNoDelay")) {
+                    socket.setTcpNoDelay((Boolean) args.get(0));
+                    return null;
+                } else if (methodName.equals("isClosed")) {
+                    return socket.isClosed();
+                } else if (methodName.equals("isConnected")) {
+                    return socket.isConnected();
+                }
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        
+        if (target instanceof java.net.ServerSocket) {
+            java.net.ServerSocket serverSocket = (java.net.ServerSocket) target;
+            try {
+                if (methodName.equals("accept")) {
+                    return serverSocket.accept();
+                } else if (methodName.equals("close")) {
+                    serverSocket.close();
+                    return null;
+                } else if (methodName.equals("isClosed")) {
+                    return serverSocket.isClosed();
+                }
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        
         if (methodName.equals("getClass") && args.isEmpty()) {
             return target.getClass();
         }
@@ -413,18 +530,38 @@ public class StandardLibrary {
         }
         
         try {
-            java.lang.reflect.Method method = target.getClass().getMethod(methodName, 
-                args.stream().map(Object::getClass).toArray(Class<?>[]::new));
-            return method.invoke(target, args.toArray());
-        } catch (Exception e) {
+            Class<?>[] paramTypes = args.stream()
+                .map(arg -> arg != null ? arg.getClass() : Object.class)
+                .toArray(Class<?>[]::new);
+            
             try {
+                java.lang.reflect.Method method = target.getClass().getMethod(methodName, paramTypes);
+                method.setAccessible(true);
+                return method.invoke(target, args.toArray());
+            } catch (NoSuchMethodException e) {
                 for (java.lang.reflect.Method method : target.getClass().getMethods()) {
                     if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
-                        return method.invoke(target, args.toArray());
+                        try {
+                            method.setAccessible(true);
+                            return method.invoke(target, args.toArray());
+                        } catch (Exception ex) {
+                            continue;
+                        }
                     }
                 }
-            } catch (Exception ex) {
+                
+                for (java.lang.reflect.Method method : target.getClass().getDeclaredMethods()) {
+                    if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
+                        try {
+                            method.setAccessible(true);
+                            return method.invoke(target, args.toArray());
+                        } catch (Exception ex) {
+                            continue;
+                        }
+                    }
+                }
             }
+        } catch (Exception e) {
         }
         
         return null;
@@ -434,6 +571,12 @@ public class StandardLibrary {
         if (target instanceof Object[]) {
             if (fieldName.equals("length")) {
                 return ((Object[]) target).length;
+            }
+        }
+        
+        if (target instanceof byte[]) {
+            if (fieldName.equals("length")) {
+                return ((byte[]) target).length;
             }
         }
         
@@ -534,6 +677,20 @@ public class StandardLibrary {
             case "String":
             case "java.lang.String":
                 if (args.isEmpty()) return "";
+                if (args.size() == 1) {
+                    Object arg = args.get(0);
+                    if (arg instanceof byte[]) {
+                        return new String((byte[]) arg, java.nio.charset.StandardCharsets.UTF_8);
+                    }
+                    return String.valueOf(arg);
+                }
+                if (args.size() == 3 && args.get(0) instanceof byte[]) {
+                    try {
+                        return new String((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2), java.nio.charset.StandardCharsets.UTF_8);
+                    } catch (Exception e) {
+                        return new String((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2));
+                    }
+                }
                 return String.valueOf(args.get(0));
             case "IOException":
             case "java.io.IOException":
@@ -588,8 +745,114 @@ public class StandardLibrary {
                 if (args.isEmpty()) return new Error();
                 return new Error(String.valueOf(args.get(0)));
             default:
-                return null;
+                return createObjectByReflection(typeName, args);
         }
+    }
+    
+    private Object createObjectByReflection(String typeName, List<Object> args) {
+        try {
+            String className = typeName;
+            if (!typeName.contains(".")) {
+                className = "java.lang." + typeName;
+            }
+            
+            Class<?> clazz = null;
+            try {
+                clazz = Class.forName(className);
+            } catch (ClassNotFoundException e) {
+                if (!typeName.contains(".")) {
+                    String[] commonPackages = {"java.io.", "java.util.", "java.net.", "java.lang.reflect."};
+                    for (String pkg : commonPackages) {
+                        try {
+                            clazz = Class.forName(pkg + typeName);
+                            break;
+                        } catch (ClassNotFoundException e2) {
+                            continue;
+                        }
+                    }
+                    if (clazz == null) {
+                        throw e;
+                    }
+                } else {
+                    throw e;
+                }
+            }
+            
+            if (args.isEmpty()) {
+                try {
+                    return clazz.getDeclaredConstructor().newInstance();
+                } catch (Exception e) {
+                }
+            }
+            
+            Object[] argsArray = args.toArray();
+            
+            for (Constructor<?> constructor : clazz.getConstructors()) {
+                if (constructor.getParameterCount() == args.size()) {
+                    try {
+                        constructor.setAccessible(true);
+                        Object[] convertedArgs = convertArgsForConstructor(constructor, argsArray);
+                        return constructor.newInstance(convertedArgs);
+                    } catch (Exception e) {
+                        continue;
+                    }
+                }
+            }
+            
+            for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
+                if (constructor.getParameterCount() == args.size()) {
+                    try {
+                        constructor.setAccessible(true);
+                        Object[] convertedArgs = convertArgsForConstructor(constructor, argsArray);
+                        return constructor.newInstance(convertedArgs);
+                    } catch (Exception e) {
+                        continue;
+                    }
+                }
+            }
+            
+            return null;
+        } catch (ClassNotFoundException e) {
+            System.err.println("[DEBUG createNativeInstance] class not found: " + e.getMessage());
+            return null;
+        } catch (Exception e) {
+            System.err.println("[DEBUG createNativeInstance] exception: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    private Object[] convertArgsForConstructor(Constructor<?> constructor, Object[] args) {
+        Class<?>[] paramTypes = constructor.getParameterTypes();
+        Object[] converted = new Object[args.length];
+        
+        for (int i = 0; i < args.length; i++) {
+            Object arg = args[i];
+            Class<?> paramType = paramTypes[i];
+            
+            if (arg == null) {
+                converted[i] = null;
+            } else if (paramType == int.class) {
+                converted[i] = ((Number) arg).intValue();
+            } else if (paramType == long.class) {
+                converted[i] = ((Number) arg).longValue();
+            } else if (paramType == double.class) {
+                converted[i] = ((Number) arg).doubleValue();
+            } else if (paramType == float.class) {
+                converted[i] = ((Number) arg).floatValue();
+            } else if (paramType == boolean.class) {
+                converted[i] = arg;
+            } else if (paramType == char.class) {
+                converted[i] = arg;
+            } else if (paramType == byte.class) {
+                converted[i] = ((Number) arg).byteValue();
+            } else if (paramType == short.class) {
+                converted[i] = ((Number) arg).shortValue();
+            } else {
+                converted[i] = arg;
+            }
+        }
+        
+        return converted;
     }
     
     private Thread createThread(List<Object> args) {
@@ -601,13 +864,39 @@ public class StandardLibrary {
         
         if (target instanceof LambdaObject) {
             LambdaObject lambda = (LambdaObject) target;
-            Runnable runnable = () -> invokeLambda(lambda, new ArrayList<>());
+            Environment capturedEnv = interpreter.getCurrentEnv();
+            ScriptClass capturedClass = capturedEnv != null ? capturedEnv.getCurrentClass() : null;
+            Runnable runnable = () -> {
+                Environment threadEnv = new Environment(interpreter.getGlobalEnv());
+                if (capturedClass != null) {
+                    threadEnv.setCurrentClass(capturedClass);
+                }
+                interpreter.setCurrentEnv(threadEnv);
+                try {
+                    invokeLambda(lambda, new ArrayList<>());
+                } finally {
+                    interpreter.setCurrentEnv(capturedEnv);
+                }
+            };
             return new Thread(runnable);
         }
         
         if (target instanceof MethodReferenceObject) {
             MethodReferenceObject methodRef = (MethodReferenceObject) target;
-            Runnable runnable = () -> invokeMethodReference(methodRef, new ArrayList<>());
+            Environment capturedEnv = interpreter.getCurrentEnv();
+            ScriptClass capturedClass = capturedEnv != null ? capturedEnv.getCurrentClass() : null;
+            Runnable runnable = () -> {
+                Environment threadEnv = new Environment(interpreter.getGlobalEnv());
+                if (capturedClass != null) {
+                    threadEnv.setCurrentClass(capturedClass);
+                }
+                interpreter.setCurrentEnv(threadEnv);
+                try {
+                    invokeMethodReference(methodRef, new ArrayList<>());
+                } finally {
+                    interpreter.setCurrentEnv(capturedEnv);
+                }
+            };
             return new Thread(runnable);
         }
         
@@ -615,11 +904,28 @@ public class StandardLibrary {
             RuntimeObject obj = (RuntimeObject) target;
             ScriptMethod runMethod = obj.getScriptClass().getMethod("run", new ArrayList<>());
             if (runMethod != null) {
+                Environment capturedEnv = interpreter.getCurrentEnv();
+                ScriptClass capturedClass = capturedEnv != null ? capturedEnv.getCurrentClass() : null;
                 Runnable runnable = () -> {
+                    Environment threadEnv = new Environment(interpreter.getGlobalEnv());
+                    if (capturedClass != null) {
+                        threadEnv.setCurrentClass(capturedClass);
+                    }
+                    threadEnv.setThisObject(null);
+                    
+                    for (Map.Entry<String, Object> entry : obj.getCapturedVariables().entrySet()) {
+                        threadEnv.defineVariable(entry.getKey(), entry.getValue());
+                    }
+                    
+                    interpreter.setCurrentEnv(threadEnv);
                     try {
                         interpreter.invokeMethod(obj, runMethod, new ArrayList<>());
+                    } catch (InterpreterException e) {
+                        System.err.println(e.getFullStackTrace());
                     } catch (Exception e) {
                         e.printStackTrace();
+                    } finally {
+                        interpreter.setCurrentEnv(capturedEnv);
                     }
                 };
                 return new Thread(runnable);

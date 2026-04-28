@@ -1,6 +1,7 @@
 package cn.langlang.javainterpreter;
 
 import cn.langlang.javainterpreter.api.JavaInterpreter;
+import cn.langlang.javainterpreter.interpreter.InterpreterException;
 import cn.langlang.javainterpreter.runtime.ScriptClass;
 import java.io.*;
 import java.nio.file.*;
@@ -68,7 +69,8 @@ public class Main {
 
         for (String file : files) {
             String source = new String(Files.readAllBytes(Paths.get(file)), "UTF-8").trim();
-            interpreter.load(source);
+            String fileName = new File(file).getName();
+            interpreter.load(source, fileName);
         }
 
         try {
@@ -76,6 +78,9 @@ public class Main {
             if (result != null) {
                 System.out.println("Result: " + result);
             }
+        } catch (InterpreterException e) {
+            System.err.println(e.getFullStackTrace());
+            System.exit(1);
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
             e.printStackTrace();

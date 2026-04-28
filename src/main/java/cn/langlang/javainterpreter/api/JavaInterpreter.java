@@ -24,6 +24,10 @@ public class JavaInterpreter {
     }
     
     public void load(String source) {
+        load(source, null);
+    }
+    
+    public void load(String source, String fileName) {
         String trimmedSource = source.trim();
 
         java.util.regex.Pattern classPattern = java.util.regex.Pattern.compile(
@@ -34,6 +38,10 @@ public class JavaInterpreter {
         }
 
         String processedSource = preprocessSource(source);
+        
+        if (fileName != null) {
+            interpreter.setCurrentFileName(fileName);
+        }
 
         Lexer lexer = new Lexer(processedSource);
         List<Token> tokens = lexer.scanTokens();
@@ -52,6 +60,7 @@ public class JavaInterpreter {
     
     public Object executeFile(String filePath) throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(filePath)));
+        interpreter.setCurrentFileName(new File(filePath).getName());
         return execute(source);
     }
     

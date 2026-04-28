@@ -9,18 +9,83 @@ import java.util.function.*;
 
 public class Interpreter implements ASTVisitor<Object> {
     private final Environment globalEnv;
-    private Environment currentEnv;
+    private final ThreadLocal<Environment> currentEnvHolder;
     private final Map<String, ScriptClass> loadedClasses;
     private final StandardLibrary stdLib;
     private final List<cn.langlang.javainterpreter.annotation.AnnotationProcessor> annotationProcessors;
+    private final ThreadLocal<List<InterpreterStackTraceElement>> callStack;
+    private String currentFileName;
     
     public Interpreter() {
         this.globalEnv = new Environment();
-        this.currentEnv = globalEnv;
+        this.currentEnvHolder = new ThreadLocal<>();
+        this.currentEnvHolder.set(globalEnv);
         this.loadedClasses = new HashMap<>();
         this.stdLib = new StandardLibrary(this);
         this.annotationProcessors = new ArrayList<>();
+        this.callStack = new ThreadLocal<>();
+        this.currentFileName = null;
         initializeBuiltInClasses();
+    }
+    
+    public Environment getCurrentEnv() {
+        Environment env = currentEnvHolder.get();
+        return env != null ? env : globalEnv;
+    }
+    
+    public void setCurrentEnv(Environment env) {
+        currentEnvHolder.set(env);
+    }
+    
+    public Environment getGlobalEnv() {
+        return globalEnv;
+    }
+    
+    public void setCurrentFileName(String fileName) {
+        this.currentFileName = fileName;
+    }
+    
+    public String getCurrentFileName() {
+        return currentFileName;
+    }
+    
+    public void pushCallStack(String className, String methodName, int lineNumber) {
+        List<InterpreterStackTraceElement> stack = callStack.get();
+        if (stack == null) {
+            stack = new ArrayList<>();
+            callStack.set(stack);
+        }
+        stack.add(new InterpreterStackTraceElement(className, methodName, currentFileName, lineNumber));
+    }
+    
+    public void popCallStack() {
+        List<InterpreterStackTraceElement> stack = callStack.get();
+        if (stack != null && !stack.isEmpty()) {
+            stack.remove(stack.size() - 1);
+        }
+    }
+    
+    public List<InterpreterStackTraceElement> getCallStack() {
+        List<InterpreterStackTraceElement> stack = callStack.get();
+        return stack != null ? new ArrayList<>(stack) : new ArrayList<>();
+    }
+    
+    public InterpreterException createException(String message) {
+        InterpreterException ex = new InterpreterException(message);
+        List<InterpreterStackTraceElement> stack = getCallStack();
+        for (int i = stack.size() - 1; i >= 0; i--) {
+            ex.addStackTraceElement(stack.get(i));
+        }
+        return ex;
+    }
+    
+    public InterpreterException createException(String message, Throwable cause) {
+        InterpreterException ex = new InterpreterException(message, cause);
+        List<InterpreterStackTraceElement> stack = getCallStack();
+        for (int i = stack.size() - 1; i >= 0; i--) {
+            ex.addStackTraceElement(stack.get(i));
+        }
+        return ex;
     }
     
     public void addAnnotationProcessor(cn.langlang.javainterpreter.annotation.AnnotationProcessor processor) {
@@ -112,13 +177,13 @@ public class Interpreter implements ASTVisitor<Object> {
                 if (!globalEnv.hasVariable(fieldKey)) {
                     Object value = null;
                     if (field.getInitializer() != null) {
-                        Environment previous = currentEnv;
-                        currentEnv = currentEnv.push();
-                        currentEnv.setCurrentClass(scriptClass);
+                        Environment previous = getCurrentEnv();
+                        setCurrentEnv(getCurrentEnv().push());
+                        getCurrentEnv().setCurrentClass(scriptClass);
                         try {
                             value = field.getInitializer().accept(this);
                         } finally {
-                            currentEnv = previous;
+                            setCurrentEnv(previous);
                         }
                     } else {
                         value = getDefaultValue(field.getType());
@@ -129,14 +194,14 @@ public class Interpreter implements ASTVisitor<Object> {
         }
         
         for (InitializerBlock init : scriptClass.getStaticInitializers()) {
-            Environment previous = currentEnv;
-            currentEnv = currentEnv.push();
-            currentEnv.setCurrentClass(scriptClass);
+            Environment previous = getCurrentEnv();
+            setCurrentEnv(getCurrentEnv().push());
+            getCurrentEnv().setCurrentClass(scriptClass);
             
             try {
                 init.accept(this);
             } finally {
-                currentEnv = previous;
+                setCurrentEnv(previous);
             }
         }
         
@@ -193,7 +258,7 @@ public class Interpreter implements ASTVisitor<Object> {
                 String memberName = importName.substring(lastDot + 1);
                 Object staticMember = stdLib.resolveStaticImport(memberName);
                 if (staticMember != null) {
-                    currentEnv.defineVariable(memberName, staticMember);
+                    getCurrentEnv().defineVariable(memberName, staticMember);
                 }
             }
         } else if (isStatic && isAsterisk) {
@@ -204,11 +269,11 @@ public class Interpreter implements ASTVisitor<Object> {
             for (String func : mathFunctions) {
                 Object staticMember = stdLib.resolveStaticImport(func);
                 if (staticMember != null) {
-                    currentEnv.defineVariable(func, staticMember);
+                    getCurrentEnv().defineVariable(func, staticMember);
                 }
             }
-            currentEnv.defineVariable("PI", Math.PI);
-            currentEnv.defineVariable("E", Math.E);
+            getCurrentEnv().defineVariable("PI", Math.PI);
+            getCurrentEnv().defineVariable("E", Math.E);
         }
         
         return null;
@@ -528,22 +593,22 @@ public class Interpreter implements ASTVisitor<Object> {
             if (declarator.getInitializer() != null) {
                 value = declarator.getInitializer().accept(this);
             }
-            currentEnv.defineVariable(declarator.getName(), value);
+            getCurrentEnv().defineVariable(declarator.getName(), value);
         }
         return null;
     }
     
     @Override
     public Object visitBlockStatement(BlockStatement node) {
-        Environment previous = currentEnv;
-        currentEnv = currentEnv.push();
+        Environment previous = getCurrentEnv();
+        setCurrentEnv(getCurrentEnv().push());
         
         try {
             for (Statement stmt : node.getStatements()) {
                 stmt.accept(this);
             }
         } finally {
-            currentEnv = previous;
+            setCurrentEnv(previous);
         }
         
         return null;
@@ -596,8 +661,8 @@ public class Interpreter implements ASTVisitor<Object> {
     
     @Override
     public Object visitForStatement(ForStatement node) {
-        Environment previous = currentEnv;
-        currentEnv = currentEnv.push();
+        Environment previous = getCurrentEnv();
+        setCurrentEnv(getCurrentEnv().push());
         
         try {
             if (node.getInit() != null) {
@@ -625,7 +690,7 @@ public class Interpreter implements ASTVisitor<Object> {
                 }
             }
         } finally {
-            currentEnv = previous;
+            setCurrentEnv(previous);
         }
         
         return null;
@@ -638,13 +703,13 @@ public class Interpreter implements ASTVisitor<Object> {
         if (iterable instanceof Object[]) {
             Object[] array = (Object[]) iterable;
             for (Object element : array) {
-                Environment previous = currentEnv;
-                currentEnv = currentEnv.push();
+                Environment previous = getCurrentEnv();
+                setCurrentEnv(getCurrentEnv().push());
                 
                 try {
                     LocalVariableDeclaration.VariableDeclarator declarator = 
                         node.getVariable().getDeclarators().get(0);
-                    currentEnv.defineVariable(declarator.getName(), element);
+                    getCurrentEnv().defineVariable(declarator.getName(), element);
                     
                     try {
                         node.getBody().accept(this);
@@ -656,18 +721,18 @@ public class Interpreter implements ASTVisitor<Object> {
                         throw e;
                     }
                 } finally {
-                    currentEnv = previous;
+                    setCurrentEnv(previous);
                 }
             }
         } else if (iterable instanceof Iterable) {
             for (Object element : (Iterable<?>) iterable) {
-                Environment previous = currentEnv;
-                currentEnv = currentEnv.push();
+                Environment previous = getCurrentEnv();
+                setCurrentEnv(getCurrentEnv().push());
                 
                 try {
                     LocalVariableDeclaration.VariableDeclarator declarator = 
                         node.getVariable().getDeclarators().get(0);
-                    currentEnv.defineVariable(declarator.getName(), element);
+                    getCurrentEnv().defineVariable(declarator.getName(), element);
                     
                     try {
                         node.getBody().accept(this);
@@ -679,7 +744,7 @@ public class Interpreter implements ASTVisitor<Object> {
                         throw e;
                     }
                 } finally {
-                    currentEnv = previous;
+                    setCurrentEnv(previous);
                 }
             }
         }
@@ -753,9 +818,10 @@ public class Interpreter implements ASTVisitor<Object> {
     public Object visitThrowStatement(ThrowStatement node) {
         Object exception = node.getExpression().accept(this);
         if (exception instanceof Throwable) {
-            throw new RuntimeException((Throwable) exception);
+            InterpreterException ex = createException(((Throwable) exception).getMessage(), (Throwable) exception);
+            throw ex;
         }
-        throw new RuntimeException("Thrown object is not a Throwable");
+        throw createException("Thrown object is not a Throwable");
     }
     
     @Override
@@ -768,30 +834,55 @@ public class Interpreter implements ASTVisitor<Object> {
             for (TryStatement.ResourceDeclaration resource : resourceDecls) {
                 Object res = resource.getExpression().accept(this);
                 resources.add(res);
-                currentEnv.defineVariable(resource.getName(), res);
+                getCurrentEnv().defineVariable(resource.getName(), res);
             }
             
             node.getTryBlock().accept(this);
         } catch (ReturnException | BreakException | ContinueException e) {
             throw e;
+        } catch (InterpreterException e) {
+            primaryException = e.getCause() != null ? e.getCause() : e;
+            boolean caught = false;
+            
+            for (CatchClause catchClause : node.getCatchClauses()) {
+                if (matchesException(e, catchClause.getExceptionTypes())) {
+                    Environment previous = getCurrentEnv();
+                    setCurrentEnv(getCurrentEnv().push());
+                    
+                    try {
+                        Throwable actualException = e.getCause() != null ? e.getCause() : e;
+                        getCurrentEnv().defineVariable(catchClause.getExceptionName(), actualException);
+                        catchClause.getBody().accept(this);
+                        caught = true;
+                        primaryException = null;
+                        break;
+                    } finally {
+                        setCurrentEnv(previous);
+                    }
+                }
+            }
+            
+            if (!caught) {
+                throw e;
+            }
         } catch (RuntimeException e) {
             primaryException = e.getCause() != null ? e.getCause() : e;
             boolean caught = false;
             
             for (CatchClause catchClause : node.getCatchClauses()) {
                 if (matchesException(e, catchClause.getExceptionTypes())) {
-                    Environment previous = currentEnv;
-                    currentEnv = currentEnv.push();
+                    Environment previous = getCurrentEnv();
+                    setCurrentEnv(getCurrentEnv().push());
                     
                     try {
                         Throwable actualException = e.getCause() != null ? e.getCause() : e;
-                        currentEnv.defineVariable(catchClause.getExceptionName(), actualException);
+                        getCurrentEnv().defineVariable(catchClause.getExceptionName(), actualException);
                         catchClause.getBody().accept(this);
                         caught = true;
                         primaryException = null;
                         break;
                     } finally {
-                        currentEnv = previous;
+                        setCurrentEnv(previous);
                     }
                 }
             }
@@ -957,7 +1048,7 @@ public class Interpreter implements ASTVisitor<Object> {
     public Object visitIdentifierExpression(IdentifierExpression node) {
         String name = node.getName();
         
-        ScriptClass currentClass = currentEnv.getCurrentClass();
+        ScriptClass currentClass = getCurrentEnv().getCurrentClass();
         while (currentClass != null) {
             ScriptField field = currentClass.getField(name);
             if (field != null && field.isStatic()) {
@@ -970,15 +1061,15 @@ public class Interpreter implements ASTVisitor<Object> {
             currentClass = currentClass.getEnclosingClass();
         }
         
-        if (currentEnv.hasVariable(name)) {
-            return currentEnv.getVariable(name);
+        if (getCurrentEnv().hasVariable(name)) {
+            return getCurrentEnv().getVariable(name);
         }
         
-        if (currentEnv.hasClass(name)) {
-            return currentEnv.getClass(name);
+        if (getCurrentEnv().hasClass(name)) {
+            return getCurrentEnv().getClass(name);
         }
         
-        RuntimeObject thisObj = currentEnv.getThisObject();
+        RuntimeObject thisObj = getCurrentEnv().getThisObject();
         if (thisObj != null && thisObj.hasField(name)) {
             return thisObj.getField(name);
         }
@@ -1174,7 +1265,7 @@ public class Interpreter implements ASTVisitor<Object> {
         if (target instanceof IdentifierExpression) {
             String name = ((IdentifierExpression) target).getName();
             
-            ScriptClass currentClass = currentEnv.getCurrentClass();
+            ScriptClass currentClass = getCurrentEnv().getCurrentClass();
             while (currentClass != null) {
                 ScriptField field = currentClass.getField(name);
                 if (field != null && field.isStatic()) {
@@ -1185,7 +1276,7 @@ public class Interpreter implements ASTVisitor<Object> {
                 currentClass = currentClass.getEnclosingClass();
             }
             
-            currentEnv.setVariable(name, value);
+            getCurrentEnv().setVariable(name, value);
         } else if (target instanceof FieldAccessExpression) {
             FieldAccessExpression fieldAccess = (FieldAccessExpression) target;
             Object obj = fieldAccess.getTarget().accept(this);
@@ -1200,10 +1291,52 @@ public class Interpreter implements ASTVisitor<Object> {
             ArrayAccessExpression arrayAccess = (ArrayAccessExpression) target;
             Object array = arrayAccess.getArray().accept(this);
             Object index = arrayAccess.getIndex().accept(this);
+            int idx = toInt(index);
             if (array instanceof Object[]) {
-                ((Object[]) array)[toInt(index)] = value;
+                ((Object[]) array)[idx] = value;
+            } else if (array instanceof int[]) {
+                ((int[]) array)[idx] = toInt(value);
+            } else if (array instanceof long[]) {
+                ((long[]) array)[idx] = toLong(value);
+            } else if (array instanceof double[]) {
+                ((double[]) array)[idx] = toDouble(value);
+            } else if (array instanceof float[]) {
+                ((float[]) array)[idx] = toFloat(value);
+            } else if (array instanceof boolean[]) {
+                ((boolean[]) array)[idx] = toBoolean(value);
+            } else if (array instanceof char[]) {
+                ((char[]) array)[idx] = toChar(value);
+            } else if (array instanceof byte[]) {
+                ((byte[]) array)[idx] = toByte(value);
+            } else if (array instanceof short[]) {
+                ((short[]) array)[idx] = toShort(value);
             }
         }
+    }
+    
+    private char toChar(Object value) {
+        if (value instanceof Character) return (Character) value;
+        if (value instanceof Number) return (char) ((Number) value).intValue();
+        if (value instanceof String && ((String) value).length() == 1) return ((String) value).charAt(0);
+        return '\0';
+    }
+    
+    private byte toByte(Object value) {
+        if (value instanceof Byte) return (Byte) value;
+        if (value instanceof Number) return ((Number) value).byteValue();
+        return (byte) 0;
+    }
+    
+    private short toShort(Object value) {
+        if (value instanceof Short) return (Short) value;
+        if (value instanceof Number) return ((Number) value).shortValue();
+        return (short) 0;
+    }
+    
+    private float toFloat(Object value) {
+        if (value instanceof Float) return (Float) value;
+        if (value instanceof Number) return ((Number) value).floatValue();
+        return 0.0f;
     }
     
     @Override
@@ -1277,7 +1410,7 @@ public class Interpreter implements ASTVisitor<Object> {
         }
         
         if (target == null) {
-            Object var = currentEnv.getVariable(node.getMethodName());
+            Object var = getCurrentEnv().getVariable(node.getMethodName());
             if (var instanceof ScriptClass) {
                 target = var;
             } else if (var instanceof StandardLibrary.StaticMethodHolder) {
@@ -1286,15 +1419,33 @@ public class Interpreter implements ASTVisitor<Object> {
         }
 
         if (target == null && node.getTarget() == null) {
-            RuntimeObject thisObj = currentEnv.getThisObject();
-            if (thisObj != null) {
-                target = thisObj;
+            ScriptClass currentClass = getCurrentEnv().getCurrentClass();
+            if (currentClass != null) {
+                ScriptMethod method = currentClass.getMethod(node.getMethodName(), args);
+                if (method != null && method.isStatic()) {
+                    target = currentClass;
+                }
+                
+                if (method == null && currentClass.getEnclosingClass() != null) {
+                    ScriptClass enclosingClass = currentClass.getEnclosingClass();
+                    method = enclosingClass.getMethod(node.getMethodName(), args);
+                    if (method != null && method.isStatic()) {
+                        target = enclosingClass;
+                    }
+                }
+            }
+            
+            if (target == null) {
+                RuntimeObject thisObj = getCurrentEnv().getThisObject();
+                if (thisObj != null) {
+                    target = thisObj;
+                }
             }
         }
         
         if (target == null && node.getTarget() instanceof IdentifierExpression) {
             String varName = ((IdentifierExpression) node.getTarget()).getName();
-            target = currentEnv.getVariable(varName);
+            target = getCurrentEnv().getVariable(varName);
             
             if (target == null) {
                 ScriptClass scriptClass = globalEnv.getClass(varName);
@@ -1385,18 +1536,18 @@ public class Interpreter implements ASTVisitor<Object> {
         LambdaExpression lambdaExpr = lambda.getLambda();
         Environment closureEnv = lambda.getClosureEnv();
         ScriptClass closureClass = lambda.getClosureClass();
-        Environment previous = currentEnv;
-        currentEnv = new Environment(closureEnv != null ? closureEnv : globalEnv);
+        Environment previous = getCurrentEnv();
+        setCurrentEnv(new Environment(closureEnv != null ? closureEnv : globalEnv));
         
         if (closureClass != null) {
-            currentEnv.setCurrentClass(closureClass);
+            getCurrentEnv().setCurrentClass(closureClass);
         }
         
         try {
             List<LambdaExpression.LambdaParameter> params = lambdaExpr.getParameters();
             for (int i = 0; i < args.size() && i < params.size(); i++) {
                 LambdaExpression.LambdaParameter param = params.get(i);
-                currentEnv.defineVariable(param.getName(), args.get(i));
+                getCurrentEnv().defineVariable(param.getName(), args.get(i));
             }
             
             ASTNode body = lambdaExpr.getBody();
@@ -1411,7 +1562,7 @@ public class Interpreter implements ASTVisitor<Object> {
                 }
             }
         } finally {
-            currentEnv = previous;
+            setCurrentEnv(previous);
         }
         
         return null;
@@ -1521,14 +1672,24 @@ public class Interpreter implements ASTVisitor<Object> {
             return method.getNativeImplementation().apply(fullArgs);
         }
         
-        Environment previous = currentEnv;
-        currentEnv = new Environment(globalEnv);
+        String className = method.getDeclaringClass() != null ? method.getDeclaringClass().getName() : "Unknown";
+        int lineNumber = method.getBody() != null ? method.getBody().getLine() : 0;
+        pushCallStack(className, method.getName(), lineNumber);
+        
+        Environment previous = getCurrentEnv();
+        setCurrentEnv(new Environment(getCurrentEnv()));
         
         try {
             if (target != null) {
-                currentEnv.setThisObject(target);
+                getCurrentEnv().setThisObject(target);
+                
+                if (target.hasCapturedVariable("this") || target.getCapturedVariables().size() > 0) {
+                    for (Map.Entry<String, Object> entry : target.getCapturedVariables().entrySet()) {
+                        getCurrentEnv().defineVariable(entry.getKey(), entry.getValue());
+                    }
+                }
             }
-            currentEnv.setCurrentClass(method.getDeclaringClass());
+            getCurrentEnv().setCurrentClass(method.getDeclaringClass());
             
             List<ParameterDeclaration> params = method.getParameters();
             for (int i = 0; i < args.size(); i++) {
@@ -1538,7 +1699,7 @@ public class Interpreter implements ASTVisitor<Object> {
                 } else {
                     paramName = params.get(params.size() - 1).getName() + "_" + (i - params.size() + 1);
                 }
-                currentEnv.defineVariable(paramName, args.get(i));
+                getCurrentEnv().defineVariable(paramName, args.get(i));
             }
             
             if (method.getBody() != null) {
@@ -1548,8 +1709,13 @@ public class Interpreter implements ASTVisitor<Object> {
             return null;
         } catch (ReturnException e) {
             return e.getValue();
+        } catch (InterpreterException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw createException(e.getMessage(), e);
         } finally {
-            currentEnv = previous;
+            setCurrentEnv(previous);
+            popCallStack();
         }
     }
     
@@ -1562,8 +1728,8 @@ public class Interpreter implements ASTVisitor<Object> {
             ScriptField field = scriptClass.getField(node.getFieldName());
             if (field != null && field.isStatic()) {
                 String varName = scriptClass.getName() + "." + node.getFieldName();
-                if (currentEnv.hasVariable(varName)) {
-                    return currentEnv.getVariable(varName);
+                if (getCurrentEnv().hasVariable(varName)) {
+                    return getCurrentEnv().getVariable(varName);
                 }
                 if (globalEnv.hasVariable(varName)) {
                     return globalEnv.getVariable(varName);
@@ -1571,8 +1737,8 @@ public class Interpreter implements ASTVisitor<Object> {
                 return null;
             }
             
-            if (currentEnv.hasVariable(node.getFieldName())) {
-                return currentEnv.getVariable(node.getFieldName());
+            if (getCurrentEnv().hasVariable(node.getFieldName())) {
+                return getCurrentEnv().getVariable(node.getFieldName());
             }
         }
         
@@ -1702,7 +1868,7 @@ public class Interpreter implements ASTVisitor<Object> {
             superClass, interfaces, null
         );
         
-        ScriptClass enclosingClass = currentEnv.getCurrentClass();
+        ScriptClass enclosingClass = getCurrentEnv().getCurrentClass();
         if (enclosingClass != null) {
             anonymousClass.setEnclosingClass(enclosingClass);
         }
@@ -1746,6 +1912,33 @@ public class Interpreter implements ASTVisitor<Object> {
         
         RuntimeObject instance = new RuntimeObject(anonymousClass);
         
+        Set<String> localVariables = new HashSet<>();
+        for (ASTNode member : anonymousClassBody) {
+            if (member instanceof MethodDeclaration) {
+                MethodDeclaration method = (MethodDeclaration) member;
+                for (ParameterDeclaration param : method.getParameters()) {
+                    localVariables.add(param.getName());
+                }
+            } else if (member instanceof ConstructorDeclaration) {
+                ConstructorDeclaration constructor = (ConstructorDeclaration) member;
+                for (ParameterDeclaration param : constructor.getParameters()) {
+                    localVariables.add(param.getName());
+                }
+            }
+        }
+        
+        Set<String> usedVariables = new HashSet<>();
+        for (ASTNode member : anonymousClassBody) {
+            collectUsedVariables(member, usedVariables);
+        }
+        
+        for (String varName : usedVariables) {
+            if (!localVariables.contains(varName) && getCurrentEnv().hasVariable(varName)) {
+                Object value = getCurrentEnv().getVariable(varName);
+                instance.setCapturedVariable(varName, value);
+            }
+        }
+        
         initializeFields(anonymousClass, instance);
         
         runInstanceInitializers(anonymousClass, instance);
@@ -1766,6 +1959,123 @@ public class Interpreter implements ASTVisitor<Object> {
         }
         
         return instance;
+    }
+    
+    private void collectUsedVariables(ASTNode node, Set<String> variables) {
+        if (node == null) return;
+        
+        if (node instanceof IdentifierExpression) {
+            IdentifierExpression id = (IdentifierExpression) node;
+            variables.add(id.getName());
+        } else if (node instanceof BinaryExpression) {
+            BinaryExpression binary = (BinaryExpression) node;
+            collectUsedVariables(binary.getLeft(), variables);
+            collectUsedVariables(binary.getRight(), variables);
+        } else if (node instanceof MethodInvocationExpression) {
+            MethodInvocationExpression call = (MethodInvocationExpression) node;
+            collectUsedVariables(call.getTarget(), variables);
+            for (Expression arg : call.getArguments()) {
+                collectUsedVariables(arg, variables);
+            }
+        } else if (node instanceof FieldAccessExpression) {
+            FieldAccessExpression field = (FieldAccessExpression) node;
+            collectUsedVariables(field.getTarget(), variables);
+        } else if (node instanceof AssignmentExpression) {
+            AssignmentExpression assign = (AssignmentExpression) node;
+            collectUsedVariables(assign.getTarget(), variables);
+            collectUsedVariables(assign.getValue(), variables);
+        } else if (node instanceof LocalVariableDeclaration) {
+            LocalVariableDeclaration varDecl = (LocalVariableDeclaration) node;
+            for (LocalVariableDeclaration.VariableDeclarator declarator : varDecl.getDeclarators()) {
+                if (declarator.getInitializer() != null) {
+                    collectUsedVariables(declarator.getInitializer(), variables);
+                }
+            }
+        } else if (node instanceof BlockStatement) {
+            BlockStatement block = (BlockStatement) node;
+            for (ASTNode stmt : block.getStatements()) {
+                collectUsedVariables(stmt, variables);
+            }
+        } else if (node instanceof IfStatement) {
+            IfStatement ifStmt = (IfStatement) node;
+            collectUsedVariables(ifStmt.getCondition(), variables);
+            collectUsedVariables(ifStmt.getThenStatement(), variables);
+            collectUsedVariables(ifStmt.getElseStatement(), variables);
+        } else if (node instanceof WhileStatement) {
+            WhileStatement whileStmt = (WhileStatement) node;
+            collectUsedVariables(whileStmt.getCondition(), variables);
+            collectUsedVariables(whileStmt.getBody(), variables);
+        } else if (node instanceof ForStatement) {
+            ForStatement forStmt = (ForStatement) node;
+            collectUsedVariables(forStmt.getInit(), variables);
+            collectUsedVariables(forStmt.getCondition(), variables);
+            collectUsedVariables(forStmt.getUpdate(), variables);
+            collectUsedVariables(forStmt.getBody(), variables);
+        } else if (node instanceof ReturnStatement) {
+            ReturnStatement ret = (ReturnStatement) node;
+            collectUsedVariables(ret.getExpression(), variables);
+        } else if (node instanceof ExpressionStatement) {
+            ExpressionStatement exprStmt = (ExpressionStatement) node;
+            collectUsedVariables(exprStmt.getExpression(), variables);
+        } else if (node instanceof TryStatement) {
+            TryStatement tryStmt = (TryStatement) node;
+            collectUsedVariables(tryStmt.getTryBlock(), variables);
+            for (CatchClause catchClause : tryStmt.getCatchClauses()) {
+                collectUsedVariables(catchClause.getBody(), variables);
+            }
+            collectUsedVariables(tryStmt.getFinallyBlock(), variables);
+        } else if (node instanceof ThrowStatement) {
+            ThrowStatement throwStmt = (ThrowStatement) node;
+            collectUsedVariables(throwStmt.getExpression(), variables);
+        } else if (node instanceof MethodDeclaration) {
+            MethodDeclaration method = (MethodDeclaration) node;
+            collectUsedVariables(method.getBody(), variables);
+        } else if (node instanceof ConstructorDeclaration) {
+            ConstructorDeclaration constructor = (ConstructorDeclaration) node;
+            collectUsedVariables(constructor.getBody(), variables);
+        } else if (node instanceof NewObjectExpression) {
+            NewObjectExpression newObj = (NewObjectExpression) node;
+            for (Expression arg : newObj.getArguments()) {
+                collectUsedVariables(arg, variables);
+            }
+            if (newObj.getAnonymousClassBody() != null) {
+                for (ASTNode member : newObj.getAnonymousClassBody()) {
+                    collectUsedVariables(member, variables);
+                }
+            }
+        } else if (node instanceof ArrayAccessExpression) {
+            ArrayAccessExpression arrayAccess = (ArrayAccessExpression) node;
+            collectUsedVariables(arrayAccess.getArray(), variables);
+            collectUsedVariables(arrayAccess.getIndex(), variables);
+        } else if (node instanceof NewArrayExpression) {
+            NewArrayExpression arrayCreation = (NewArrayExpression) node;
+            for (Expression dim : arrayCreation.getDimensions()) {
+                collectUsedVariables(dim, variables);
+            }
+            if (arrayCreation.getInitializer() != null) {
+                for (Expression elem : arrayCreation.getInitializer().getElements()) {
+                    collectUsedVariables(elem, variables);
+                }
+            }
+        } else if (node instanceof CastExpression) {
+            CastExpression cast = (CastExpression) node;
+            collectUsedVariables(cast.getExpression(), variables);
+        } else if (node instanceof InstanceOfExpression) {
+            InstanceOfExpression instanceOf = (InstanceOfExpression) node;
+            collectUsedVariables(instanceOf.getExpression(), variables);
+        } else if (node instanceof TernaryExpression) {
+            TernaryExpression ternary = (TernaryExpression) node;
+            collectUsedVariables(ternary.getCondition(), variables);
+            collectUsedVariables(ternary.getTrueExpression(), variables);
+            collectUsedVariables(ternary.getFalseExpression(), variables);
+        } else if (node instanceof LambdaExpression) {
+            LambdaExpression lambda = (LambdaExpression) node;
+            collectUsedVariables(lambda.getBody(), variables);
+        } else if (node instanceof SynchronizedStatement) {
+            SynchronizedStatement sync = (SynchronizedStatement) node;
+            collectUsedVariables(sync.getLock(), variables);
+            collectUsedVariables(sync.getBody(), variables);
+        }
     }
     
     private ScriptClass createRunnableInterface() {
@@ -1857,17 +2167,17 @@ public class Interpreter implements ASTVisitor<Object> {
             runInstanceInitializers(scriptClass.getSuperClass(), instance);
         }
         
-        Environment previous = currentEnv;
-        currentEnv = currentEnv.push();
-        currentEnv.setThisObject(instance);
-        currentEnv.setCurrentClass(scriptClass);
+        Environment previous = getCurrentEnv();
+        setCurrentEnv(getCurrentEnv().push());
+        getCurrentEnv().setThisObject(instance);
+        getCurrentEnv().setCurrentClass(scriptClass);
         
         try {
             for (InitializerBlock init : scriptClass.getInstanceInitializers()) {
                 init.accept(this);
             }
         } finally {
-            currentEnv = previous;
+            setCurrentEnv(previous);
         }
     }
     
@@ -2023,6 +2333,21 @@ public class Interpreter implements ASTVisitor<Object> {
         
         if (checkClass == null) {
             String typeName = checkType.getName();
+            int arrayDims = checkType.getArrayDimensions();
+            
+            if (arrayDims > 0) {
+                switch (typeName) {
+                    case "byte": return value instanceof byte[];
+                    case "short": return value instanceof short[];
+                    case "int": return value instanceof int[];
+                    case "long": return value instanceof long[];
+                    case "char": return value instanceof char[];
+                    case "float": return value instanceof float[];
+                    case "double": return value instanceof double[];
+                    case "boolean": return value instanceof boolean[];
+                    default: return value.getClass().isArray();
+                }
+            }
             switch (typeName) {
                 case "int": return value instanceof Integer;
                 case "long": return value instanceof Long;
@@ -2032,6 +2357,27 @@ public class Interpreter implements ASTVisitor<Object> {
                 case "boolean": return value instanceof Boolean;
                 case "float": return value instanceof Float;
                 case "double": return value instanceof Double;
+                case "String":
+                case "java.lang.String":
+                    return value instanceof String;
+                case "Integer":
+                case "java.lang.Integer":
+                    return value instanceof Integer;
+                case "Long":
+                case "java.lang.Long":
+                    return value instanceof Long;
+                case "Double":
+                case "java.lang.Double":
+                    return value instanceof Double;
+                case "Float":
+                case "java.lang.Float":
+                    return value instanceof Float;
+                case "Boolean":
+                case "java.lang.Boolean":
+                    return value instanceof Boolean;
+                case "Object":
+                case "java.lang.Object":
+                    return true;
                 default: return false;
             }
         }
@@ -2046,7 +2392,7 @@ public class Interpreter implements ASTVisitor<Object> {
     
     @Override
     public Object visitThisExpression(ThisExpression node) {
-        return currentEnv.getThisObject();
+        return getCurrentEnv().getThisObject();
     }
     
     @Override
@@ -2056,11 +2402,11 @@ public class Interpreter implements ASTVisitor<Object> {
         if (interfaceName != null) {
             ScriptClass interfaceClass = globalEnv.getClass(interfaceName);
             if (interfaceClass != null) {
-                return new InterfaceSuperObject(currentEnv.getThisObject(), interfaceClass);
+                return new InterfaceSuperObject(getCurrentEnv().getThisObject(), interfaceClass);
             }
         }
         
-        RuntimeObject thisObj = currentEnv.getThisObject();
+        RuntimeObject thisObj = getCurrentEnv().getThisObject();
         if (thisObj != null && thisObj.getScriptClass().getSuperClass() != null) {
             return new SuperObject(thisObj, thisObj.getScriptClass().getSuperClass());
         }
@@ -2131,12 +2477,12 @@ public class Interpreter implements ASTVisitor<Object> {
     
     @Override
     public Object visitLambdaExpression(LambdaExpression node) {
-        return new LambdaObject(node, currentEnv);
+        return new LambdaObject(node, getCurrentEnv());
     }
     
     @Override
     public Object visitMethodReferenceExpression(MethodReferenceExpression node) {
-        return new MethodReferenceObject(node, currentEnv);
+        return new MethodReferenceObject(node, getCurrentEnv());
     }
     
     @Override
@@ -2182,8 +2528,8 @@ public class Interpreter implements ASTVisitor<Object> {
             scriptClass = stdLib.getStandardClass(name);
         }
         
-        if (scriptClass == null && currentEnv.getCurrentClass() != null) {
-            String currentClassName = currentEnv.getCurrentClass().getName();
+        if (scriptClass == null && getCurrentEnv().getCurrentClass() != null) {
+            String currentClassName = getCurrentEnv().getCurrentClass().getName();
             scriptClass = globalEnv.getClass(currentClassName + "." + name);
         }
         
@@ -2215,7 +2561,7 @@ public class Interpreter implements ASTVisitor<Object> {
         throw new RuntimeException("Cannot convert to long: " + value);
     }
     
-    private float toFloat(Object value) {
+    private float toFloatValue(Object value) {
         if (value instanceof Number) return ((Number) value).floatValue();
         throw new RuntimeException("Cannot convert to float: " + value);
     }
@@ -2232,15 +2578,4 @@ public class Interpreter implements ASTVisitor<Object> {
         return Double.compare(leftVal, rightVal);
     }
     
-    public Environment getGlobalEnv() {
-        return globalEnv;
-    }
-    
-    public Environment getCurrentEnv() {
-        return currentEnv;
-    }
-    
-    public void setCurrentEnv(Environment env) {
-        this.currentEnv = env;
-    }
 }
