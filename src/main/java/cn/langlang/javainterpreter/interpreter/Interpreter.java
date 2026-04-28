@@ -173,7 +173,7 @@ public class Interpreter implements ASTVisitor<Object> {
         for (FieldDeclaration field : node.getFields()) {
             ScriptField scriptField = new ScriptField(
                 field.getName(), field.getModifiers(), field.getType(),
-                field.getInitializer(), scriptClass);
+                field.getInitializer(), scriptClass, field.getAnnotations());
             scriptClass.addField(scriptField);
         }
         
@@ -181,7 +181,7 @@ public class Interpreter implements ASTVisitor<Object> {
             ScriptMethod scriptMethod = new ScriptMethod(
                 method.getName(), method.getModifiers(), method.getReturnType(),
                 method.getParameters(), method.isVarArgs(), method.getBody(),
-                scriptClass, false, method.isDefault());
+                scriptClass, false, method.isDefault(), method.getAnnotations());
             scriptClass.addMethod(scriptMethod);
         }
         
@@ -189,7 +189,7 @@ public class Interpreter implements ASTVisitor<Object> {
             ScriptMethod scriptMethod = new ScriptMethod(
                 constructor.getName(), constructor.getModifiers(), null,
                 constructor.getParameters(), false, constructor.getBody(),
-                scriptClass, true, false);
+                scriptClass, true, false, constructor.getAnnotations());
             scriptClass.addConstructor(scriptMethod);
         }
         
@@ -231,7 +231,7 @@ public class Interpreter implements ASTVisitor<Object> {
             for (FieldDeclaration field : classDecl.getFields()) {
                 ScriptField scriptField = new ScriptField(
                     field.getName(), field.getModifiers(), field.getType(),
-                    field.getInitializer(), scriptClass);
+                    field.getInitializer(), scriptClass, field.getAnnotations());
                 scriptClass.addField(scriptField);
             }
             
@@ -239,7 +239,7 @@ public class Interpreter implements ASTVisitor<Object> {
                 ScriptMethod scriptMethod = new ScriptMethod(
                     method.getName(), method.getModifiers(), method.getReturnType(),
                     method.getParameters(), method.isVarArgs(), method.getBody(),
-                    scriptClass, false, method.isDefault());
+                    scriptClass, false, method.isDefault(), method.getAnnotations());
                 scriptClass.addMethod(scriptMethod);
             }
             
@@ -247,7 +247,7 @@ public class Interpreter implements ASTVisitor<Object> {
                 ScriptMethod scriptMethod = new ScriptMethod(
                     constructor.getName(), constructor.getModifiers(), null,
                     constructor.getParameters(), false, constructor.getBody(),
-                    scriptClass, true, false);
+                    scriptClass, true, false, constructor.getAnnotations());
                 scriptClass.addConstructor(scriptMethod);
             }
             
@@ -276,14 +276,14 @@ public class Interpreter implements ASTVisitor<Object> {
             ScriptMethod scriptMethod = new ScriptMethod(
                 method.getName(), method.getModifiers(), method.getReturnType(),
                 method.getParameters(), method.isVarArgs(), method.getBody(),
-                scriptClass, false, method.isDefault());
+                scriptClass, false, method.isDefault(), method.getAnnotations());
             scriptClass.addMethod(scriptMethod);
         }
         
         for (FieldDeclaration constant : node.getConstants()) {
             ScriptField scriptField = new ScriptField(
                 constant.getName(), constant.getModifiers(), constant.getType(),
-                constant.getInitializer(), scriptClass);
+                constant.getInitializer(), scriptClass, constant.getAnnotations());
             scriptClass.addField(scriptField);
         }
         
@@ -308,7 +308,7 @@ public class Interpreter implements ASTVisitor<Object> {
         for (FieldDeclaration field : node.getFields()) {
             ScriptField scriptField = new ScriptField(
                 field.getName(), field.getModifiers(), field.getType(),
-                field.getInitializer(), scriptClass);
+                field.getInitializer(), scriptClass, field.getAnnotations());
             scriptClass.addField(scriptField);
         }
         
@@ -316,7 +316,7 @@ public class Interpreter implements ASTVisitor<Object> {
             ScriptMethod scriptMethod = new ScriptMethod(
                 method.getName(), method.getModifiers(), method.getReturnType(),
                 method.getParameters(), method.isVarArgs(), method.getBody(),
-                scriptClass, false, method.isDefault());
+                scriptClass, false, method.isDefault(), method.getAnnotations());
             scriptClass.addMethod(scriptMethod);
         }
         
@@ -324,7 +324,7 @@ public class Interpreter implements ASTVisitor<Object> {
             ScriptMethod scriptMethod = new ScriptMethod(
                 constructor.getName(), constructor.getModifiers(), null,
                 constructor.getParameters(), false, constructor.getBody(),
-                scriptClass, true, false);
+                scriptClass, true, false, constructor.getAnnotations());
             scriptClass.addConstructor(scriptMethod);
         }
         
@@ -340,7 +340,7 @@ public class Interpreter implements ASTVisitor<Object> {
                 for (FieldDeclaration field : anonClass.getFields()) {
                     ScriptField scriptField = new ScriptField(
                         field.getName(), field.getModifiers(), field.getType(),
-                        field.getInitializer(), constantClass);
+                        field.getInitializer(), constantClass, field.getAnnotations());
                     constantClass.addField(scriptField);
                 }
                 
@@ -348,7 +348,7 @@ public class Interpreter implements ASTVisitor<Object> {
                     ScriptMethod scriptMethod = new ScriptMethod(
                         method.getName(), method.getModifiers(), method.getReturnType(),
                         method.getParameters(), method.isVarArgs(), method.getBody(),
-                        constantClass, false, method.isDefault());
+                        constantClass, false, method.isDefault(), method.getAnnotations());
                     constantClass.addMethod(scriptMethod);
                 }
             }
@@ -1182,6 +1182,14 @@ public class Interpreter implements ASTVisitor<Object> {
         }
         
         if (target instanceof java.lang.reflect.Constructor) {
+            return stdLib.invokeMethod(target, node.getMethodName(), args);
+        }
+        
+        if (target instanceof ScriptMethod) {
+            return stdLib.invokeMethod(target, node.getMethodName(), args);
+        }
+        
+        if (target instanceof ScriptField) {
             return stdLib.invokeMethod(target, node.getMethodName(), args);
         }
         

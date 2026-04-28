@@ -2,6 +2,7 @@ package cn.langlang.javainterpreter.runtime;
 
 import cn.langlang.javainterpreter.ast.*;
 import cn.langlang.javainterpreter.parser.Modifier;
+import java.util.*;
 
 public class ScriptField {
     private final String name;
@@ -9,6 +10,7 @@ public class ScriptField {
     private final Type type;
     private final Expression initializer;
     private final ScriptClass declaringClass;
+    private final List<Annotation> annotations;
     
     public ScriptField(String name, int modifiers, Type type,
                       Expression initializer, ScriptClass declaringClass) {
@@ -17,6 +19,18 @@ public class ScriptField {
         this.type = type;
         this.initializer = initializer;
         this.declaringClass = declaringClass;
+        this.annotations = new ArrayList<>();
+    }
+    
+    public ScriptField(String name, int modifiers, Type type,
+                      Expression initializer, ScriptClass declaringClass,
+                      List<Annotation> annotations) {
+        this.name = name;
+        this.modifiers = modifiers;
+        this.type = type;
+        this.initializer = initializer;
+        this.declaringClass = declaringClass;
+        this.annotations = annotations != null ? annotations : new ArrayList<>();
     }
     
     public String getName() { return name; }
@@ -24,6 +38,17 @@ public class ScriptField {
     public Type getType() { return type; }
     public Expression getInitializer() { return initializer; }
     public ScriptClass getDeclaringClass() { return declaringClass; }
+    public List<Annotation> getAnnotations() { return annotations; }
+    
+    public Annotation getAnnotation(String annotationName) {
+        for (Annotation ann : annotations) {
+            if (ann.getTypeName().equals(annotationName) || 
+                ann.getTypeName().endsWith("." + annotationName)) {
+                return ann;
+            }
+        }
+        return null;
+    }
     
     public boolean isStatic() {
         return (modifiers & Modifier.STATIC) != 0;

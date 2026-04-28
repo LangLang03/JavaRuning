@@ -14,6 +14,7 @@ public class ScriptMethod {
     private final ScriptClass declaringClass;
     private final boolean isConstructor;
     private final boolean isDefault;
+    private final List<Annotation> annotations;
     
     public ScriptMethod(String name, int modifiers, Type returnType,
                        List<ParameterDeclaration> parameters, boolean isVarArgs,
@@ -28,6 +29,24 @@ public class ScriptMethod {
         this.declaringClass = declaringClass;
         this.isConstructor = isConstructor;
         this.isDefault = isDefault;
+        this.annotations = new ArrayList<>();
+    }
+    
+    public ScriptMethod(String name, int modifiers, Type returnType,
+                       List<ParameterDeclaration> parameters, boolean isVarArgs,
+                       BlockStatement body, ScriptClass declaringClass,
+                       boolean isConstructor, boolean isDefault,
+                       List<Annotation> annotations) {
+        this.name = name;
+        this.modifiers = modifiers;
+        this.returnType = returnType;
+        this.parameters = parameters != null ? parameters : new ArrayList<>();
+        this.isVarArgs = isVarArgs;
+        this.body = body;
+        this.declaringClass = declaringClass;
+        this.isConstructor = isConstructor;
+        this.isDefault = isDefault;
+        this.annotations = annotations != null ? annotations : new ArrayList<>();
     }
     
     public String getName() { return name; }
@@ -39,6 +58,17 @@ public class ScriptMethod {
     public ScriptClass getDeclaringClass() { return declaringClass; }
     public boolean isConstructor() { return isConstructor; }
     public boolean isDefault() { return isDefault; }
+    public List<Annotation> getAnnotations() { return annotations; }
+    
+    public Annotation getAnnotation(String annotationName) {
+        for (Annotation ann : annotations) {
+            if (ann.getTypeName().equals(annotationName) || 
+                ann.getTypeName().endsWith("." + annotationName)) {
+                return ann;
+            }
+        }
+        return null;
+    }
     
     public boolean isStatic() {
         return (modifiers & Modifier.STATIC) != 0;

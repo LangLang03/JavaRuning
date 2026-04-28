@@ -519,7 +519,25 @@ public class Parser {
             return parseAnnotation();
         }
         
+        if (match(TokenType.LBRACE)) {
+            return parseAnnotationArrayInitializer();
+        }
+        
         return parseExpression();
+    }
+    
+    private Expression parseAnnotationArrayInitializer() {
+        Token token = previous();
+        List<Expression> elements = new ArrayList<>();
+        
+        if (!check(TokenType.RBRACE)) {
+            do {
+                elements.add(parseElementValue());
+            } while (match(TokenType.COMMA));
+        }
+        
+        consume(TokenType.RBRACE, "Expected '}' after array initializer");
+        return new ArrayInitializerExpression(token, elements);
     }
     
     private int parseModifiers() {
@@ -593,8 +611,27 @@ public class Parser {
             arguments.add(parseTypeArgument());
         } while (match(TokenType.COMMA));
         
-        consume(TokenType.GT, "Expected '>' after type arguments");
+        consumeClosingAngleBracket();
         return arguments;
+    }
+    
+    private void consumeClosingAngleBracket() {
+        if (match(TokenType.GT)) {
+            return;
+        }
+        if (match(TokenType.RSHIFT)) {
+            Token gtToken = new Token(TokenType.GT, ">", null, previous().getLine(), previous().getColumn());
+            tokens.add(current, gtToken);
+            return;
+        }
+        if (match(TokenType.URSHIFT)) {
+            Token gtToken = new Token(TokenType.GT, ">", null, previous().getLine(), previous().getColumn());
+            tokens.add(current, gtToken);
+            Token rshiftToken = new Token(TokenType.RSHIFT, ">>", null, previous().getLine(), previous().getColumn() + 1);
+            tokens.add(current + 1, rshiftToken);
+            return;
+        }
+        throw error(peek(), "Expected '>' after type arguments");
     }
     
     private TypeArgument parseTypeArgument() {
@@ -624,7 +661,7 @@ public class Parser {
             parameters.add(parseTypeParameter());
         } while (match(TokenType.COMMA));
         
-        consume(TokenType.GT, "Expected '>' after type parameters");
+        consumeClosingAngleBracket();
         return parameters;
     }
     

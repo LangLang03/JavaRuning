@@ -72,6 +72,14 @@ public class StandardLibrary {
             return invokeScriptClassMethod((ScriptClass) target, methodName, args);
         }
         
+        if (target instanceof ScriptMethod) {
+            return invokeScriptMethodMethod((ScriptMethod) target, methodName, args);
+        }
+        
+        if (target instanceof ScriptField) {
+            return invokeScriptFieldMethod((ScriptField) target, methodName, args);
+        }
+        
         if (target instanceof Method) {
             return invokeReflectionMethod((Method) target, methodName, args);
         }
@@ -989,5 +997,69 @@ public class StandardLibrary {
             }
         }
         return scriptClass.getConstructors().isEmpty() ? null : scriptClass.getConstructors().get(0);
+    }
+    
+    private Object invokeScriptMethodMethod(ScriptMethod scriptMethod, String methodName, List<Object> args) {
+        try {
+            switch (methodName) {
+                case "getName":
+                    return scriptMethod.getName();
+                case "getReturnType":
+                    return scriptMethod.getReturnType();
+                case "getParameterTypes":
+                    return scriptMethod.getParameters();
+                case "getDeclaringClass":
+                    return scriptMethod.getDeclaringClass();
+                case "getModifiers":
+                    return scriptMethod.getModifiers();
+                case "getAnnotations":
+                    return scriptMethod.getAnnotations();
+                case "getAnnotation":
+                    String annotationName = (String) args.get(0);
+                    return scriptMethod.getAnnotation(annotationName);
+                case "isVarArgs":
+                    return scriptMethod.isVarArgs();
+                case "isDefault":
+                    return scriptMethod.isDefault();
+                case "isConstructor":
+                    return scriptMethod.isConstructor();
+                case "toString":
+                    return "ScriptMethod[" + scriptMethod.getName() + "]";
+                default:
+                    return null;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("ScriptMethod reflection error: " + e.getMessage(), e);
+        }
+    }
+    
+    private Object invokeScriptFieldMethod(ScriptField scriptField, String methodName, List<Object> args) {
+        try {
+            switch (methodName) {
+                case "getName":
+                    return scriptField.getName();
+                case "getType":
+                    return scriptField.getType();
+                case "getDeclaringClass":
+                    return scriptField.getDeclaringClass();
+                case "getModifiers":
+                    return scriptField.getModifiers();
+                case "getAnnotations":
+                    return scriptField.getAnnotations();
+                case "getAnnotation":
+                    String annotationName = (String) args.get(0);
+                    return scriptField.getAnnotation(annotationName);
+                case "isStatic":
+                    return scriptField.isStatic();
+                case "isFinal":
+                    return scriptField.isFinal();
+                case "toString":
+                    return "ScriptField[" + scriptField.getName() + "]";
+                default:
+                    return null;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("ScriptField reflection error: " + e.getMessage(), e);
+        }
     }
 }
