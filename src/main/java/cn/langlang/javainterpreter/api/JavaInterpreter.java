@@ -2,6 +2,7 @@ package cn.langlang.javainterpreter.api;
 
 import cn.langlang.javainterpreter.lexer.*;
 import cn.langlang.javainterpreter.parser.*;
+import cn.langlang.javainterpreter.parser.Modifier;
 import cn.langlang.javainterpreter.ast.*;
 import cn.langlang.javainterpreter.interpreter.*;
 import cn.langlang.javainterpreter.runtime.*;
@@ -91,11 +92,6 @@ public class JavaInterpreter {
         globalEnv.defineVariable(name, function);
     }
     
-    public void registerClass(String name, Class<?> clazz) {
-        ScriptClass scriptClass = new ScriptClass(name, name, 0, null, new ArrayList<>(), null);
-        globalEnv.defineClass(name, scriptClass);
-    }
-    
     public Object invokeFunction(String name, Object... args) {
         Object func = globalEnv.getVariable(name);
         if (func instanceof Function) {
@@ -106,8 +102,176 @@ public class JavaInterpreter {
         throw new RuntimeException("Not a function: " + name);
     }
     
+    public ScriptClass registerClass(String name) {
+        return registerClass(name, Modifier.PUBLIC);
+    }
+    
+    public ScriptClass registerClass(String name, int modifiers) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, null, new ArrayList<>(), null);
+        globalEnv.defineClass(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public ScriptClass registerClass(String name, int modifiers, ScriptClass superClass) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, superClass, new ArrayList<>(), null);
+        globalEnv.defineClass(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public ScriptClass registerClass(String name, int modifiers, ScriptClass superClass, List<ScriptClass> interfaces) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, superClass, interfaces, null);
+        globalEnv.defineClass(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public ScriptClass getClass(String name) {
+        return globalEnv.getClass(name);
+    }
+    
+    public void registerMethod(String className, String methodName, Function<Object[], Object> implementation) {
+        registerMethod(className, methodName, Modifier.PUBLIC, implementation);
+    }
+    
+    public void registerMethod(String className, String methodName, int modifiers, Function<Object[], Object> implementation) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) {
+            throw new RuntimeException("Class not found: " + className);
+        }
+        
+        NativeMethod method = NativeMethod.createVarArgs(methodName, modifiers, "Object", scriptClass, implementation);
+        scriptClass.addMethod(method);
+    }
+    
+    public void registerMethod(String className, String methodName, int modifiers, 
+                              String returnType, String[] paramTypes, String[] paramNames,
+                              Function<Object[], Object> implementation) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) {
+            throw new RuntimeException("Class not found: " + className);
+        }
+        
+        NativeMethod method = NativeMethod.create(methodName, modifiers, returnType, paramTypes, paramNames, scriptClass, implementation);
+        scriptClass.addMethod(method);
+    }
+    
+    public void registerStaticMethod(String className, String methodName, Function<Object[], Object> implementation) {
+        registerMethod(className, methodName, Modifier.PUBLIC | Modifier.STATIC, implementation);
+    }
+    
+    public void registerStaticMethod(String className, String methodName, int modifiers, Function<Object[], Object> implementation) {
+        registerMethod(className, methodName, modifiers | Modifier.STATIC, implementation);
+    }
+    
+    public void registerConstructor(String className, Function<Object[], Object> implementation) {
+        registerConstructor(className, Modifier.PUBLIC, implementation);
+    }
+    
+    public void registerConstructor(String className, int modifiers, Function<Object[], Object> implementation) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) {
+            throw new RuntimeException("Class not found: " + className);
+        }
+        
+        NativeMethod constructor = new NativeMethod(className, modifiers, 
+            new Type(null, className, new ArrayList<>(), 0, new ArrayList<>()), 
+            new ArrayList<>(), false, scriptClass, true, implementation);
+        scriptClass.addConstructor(constructor);
+    }
+    
+    public void registerField(String className, String fieldName, Object value) {
+        registerField(className, fieldName, Modifier.PUBLIC, value);
+    }
+    
+    public void registerField(String className, String fieldName, int modifiers, Object value) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) {
+            throw new RuntimeException("Class not found: " + className);
+        }
+        
+        Type fieldType = new Type(null, value != null ? value.getClass().getSimpleName() : "Object", 
+                                 new ArrayList<>(), 0, new ArrayList<>());
+        ScriptField field = new ScriptField(fieldName, modifiers, fieldType, null, scriptClass);
+        scriptClass.addField(field);
+        
+        if ((modifiers & Modifier.STATIC) != 0) {
+            globalEnv.defineVariable(className + "." + fieldName, value);
+        }
+    }
+    
+    public void registerStaticField(String className, String fieldName, Object value) {
+        registerField(className, fieldName, Modifier.PUBLIC | Modifier.STATIC, value);
+    }
+    
+    public void registerStaticField(String className, String fieldName, int modifiers, Object value) {
+        registerField(className, fieldName, modifiers | Modifier.STATIC, value);
+    }
+    
+    public Object newInstance(String className, Object... args) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) {
+            throw new RuntimeException("Class not found: " + className);
+        }
+        
+        RuntimeObject instance = new RuntimeObject(scriptClass);
+        
+        ScriptMethod constructor = scriptClass.getMethod(className, Arrays.asList(args));
+        if (constructor != null && constructor.isConstructor()) {
+            if (constructor instanceof NativeMethod) {
+                ((NativeMethod) constructor).getNativeImplementation().apply(new Object[]{instance});
+            }
+        }
+        
+        return instance;
+    }
+    
+    public Object invokeMethod(Object target, String methodName, Object... args) {
+        if (target instanceof RuntimeObject) {
+            RuntimeObject obj = (RuntimeObject) target;
+            ScriptMethod method = obj.getScriptClass().getMethod(methodName, Arrays.asList(args));
+            if (method instanceof NativeMethod) {
+                Object[] fullArgs = new Object[args.length + 1];
+                fullArgs[0] = obj;
+                System.arraycopy(args, 0, fullArgs, 1, args.length);
+                return ((NativeMethod) method).getNativeImplementation().apply(fullArgs);
+            }
+        }
+        throw new RuntimeException("Cannot invoke method: " + methodName);
+    }
+    
+    public Object invokeStaticMethod(String className, String methodName, Object... args) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) {
+            throw new RuntimeException("Class not found: " + className);
+        }
+        
+        ScriptMethod method = scriptClass.getMethod(methodName, Arrays.asList(args));
+        if (method instanceof NativeMethod) {
+            return ((NativeMethod) method).getNativeImplementation().apply(args);
+        }
+        throw new RuntimeException("Method not found: " + methodName);
+    }
+    
     public Environment getGlobalEnvironment() {
         return globalEnv;
+    }
+    
+    public static class Modifiers {
+        public static final int PUBLIC = Modifier.PUBLIC;
+        public static final int PRIVATE = Modifier.PRIVATE;
+        public static final int PROTECTED = Modifier.PROTECTED;
+        public static final int STATIC = Modifier.STATIC;
+        public static final int FINAL = Modifier.FINAL;
+        public static final int SYNCHRONIZED = Modifier.SYNCHRONIZED;
+        public static final int VOLATILE = Modifier.VOLATILE;
+        public static final int TRANSIENT = Modifier.TRANSIENT;
+        public static final int NATIVE = Modifier.NATIVE;
+        public static final int ABSTRACT = Modifier.ABSTRACT;
+        public static final int STRICTFP = Modifier.STRICTFP;
+        public static final int DEFAULT = Modifier.DEFAULT;
+        
+        public static String toString(int modifiers) {
+            return Modifier.toString(modifiers);
+        }
     }
     
     public static void main(String[] args) {

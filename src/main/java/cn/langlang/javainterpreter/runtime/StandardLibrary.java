@@ -5,6 +5,7 @@ import cn.langlang.javainterpreter.ast.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
+import java.lang.reflect.*;
 
 public class StandardLibrary {
     private final Interpreter interpreter;
@@ -59,6 +60,30 @@ public class StandardLibrary {
     }
     
     public Object invokeMethod(Object target, String methodName, List<Object> args) {
+        if (target instanceof StaticMethodHolder) {
+            return ((StaticMethodHolder) target).invoke(args);
+        }
+        
+        if (target instanceof Class) {
+            return invokeClassMethod((Class<?>) target, methodName, args);
+        }
+        
+        if (target instanceof ScriptClass) {
+            return invokeScriptClassMethod((ScriptClass) target, methodName, args);
+        }
+        
+        if (target instanceof Method) {
+            return invokeReflectionMethod((Method) target, methodName, args);
+        }
+        
+        if (target instanceof Field) {
+            return invokeFieldMethod((Field) target, args);
+        }
+        
+        if (target instanceof Constructor) {
+            return invokeConstructorMethod((Constructor<?>) target, args);
+        }
+        
         if (target instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) target;
             if (methodName.equals("get")) {
@@ -358,6 +383,37 @@ public class StandardLibrary {
             }
         }
         
+        if (methodName.equals("getClass") && args.isEmpty()) {
+            return target.getClass();
+        }
+        
+        if (methodName.equals("hashCode") && args.isEmpty()) {
+            return target.hashCode();
+        }
+        
+        if (methodName.equals("toString") && args.isEmpty()) {
+            return target.toString();
+        }
+        
+        if (methodName.equals("equals") && args.size() == 1) {
+            return target.equals(args.get(0));
+        }
+        
+        try {
+            java.lang.reflect.Method method = target.getClass().getMethod(methodName, 
+                args.stream().map(Object::getClass).toArray(Class<?>[]::new));
+            return method.invoke(target, args.toArray());
+        } catch (Exception e) {
+            try {
+                for (java.lang.reflect.Method method : target.getClass().getMethods()) {
+                    if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
+                        return method.invoke(target, args.toArray());
+                    }
+                }
+            } catch (Exception ex) {
+            }
+        }
+        
         return null;
     }
     
@@ -531,6 +587,20 @@ public class StandardLibrary {
             case "PI": return Math.PI;
             case "E": return Math.E;
             case "System": return new SystemHolder();
+            case "sqrt": return new StaticMethodHolder("sqrt");
+            case "pow": return new StaticMethodHolder("pow");
+            case "abs": return new StaticMethodHolder("abs");
+            case "max": return new StaticMethodHolder("max");
+            case "min": return new StaticMethodHolder("min");
+            case "sin": return new StaticMethodHolder("sin");
+            case "cos": return new StaticMethodHolder("cos");
+            case "tan": return new StaticMethodHolder("tan");
+            case "log": return new StaticMethodHolder("log");
+            case "exp": return new StaticMethodHolder("exp");
+            case "floor": return new StaticMethodHolder("floor");
+            case "ceil": return new StaticMethodHolder("ceil");
+            case "round": return new StaticMethodHolder("round");
+            case "random": return new StaticMethodHolder("random");
             default: return null;
         }
     }
@@ -540,6 +610,71 @@ public class StandardLibrary {
             if (name.equals("out")) return System.out;
             if (name.equals("err")) return System.err;
             return null;
+        }
+    }
+    
+    public class StaticMethodHolder {
+        private final String methodName;
+        
+        public StaticMethodHolder(String methodName) {
+            this.methodName = methodName;
+        }
+        
+        public Object invoke(List<Object> args) {
+            return invokeStaticMethod(methodName, args);
+        }
+    }
+    
+    private Object invokeStaticMethod(String methodName, List<Object> args) {
+        try {
+            switch (methodName) {
+                case "sqrt":
+                    return Math.sqrt(((Number) args.get(0)).doubleValue());
+                case "pow":
+                    return Math.pow(((Number) args.get(0)).doubleValue(), 
+                                   ((Number) args.get(1)).doubleValue());
+                case "abs":
+                    Object arg = args.get(0);
+                    if (arg instanceof Integer) return Math.abs((Integer) arg);
+                    if (arg instanceof Long) return Math.abs((Long) arg);
+                    if (arg instanceof Double) return Math.abs((Double) arg);
+                    if (arg instanceof Float) return Math.abs((Float) arg);
+                    return Math.abs(((Number) arg).doubleValue());
+                case "max":
+                    Object a = args.get(0);
+                    Object b = args.get(1);
+                    if (a instanceof Integer && b instanceof Integer) 
+                        return Math.max((Integer) a, (Integer) b);
+                    return Math.max(((Number) a).doubleValue(), ((Number) b).doubleValue());
+                case "min":
+                    Object minA = args.get(0);
+                    Object minB = args.get(1);
+                    if (minA instanceof Integer && minB instanceof Integer) 
+                        return Math.min((Integer) minA, (Integer) minB);
+                    return Math.min(((Number) minA).doubleValue(), ((Number) minB).doubleValue());
+                case "sin":
+                    return Math.sin(((Number) args.get(0)).doubleValue());
+                case "cos":
+                    return Math.cos(((Number) args.get(0)).doubleValue());
+                case "tan":
+                    return Math.tan(((Number) args.get(0)).doubleValue());
+                case "log":
+                    return Math.log(((Number) args.get(0)).doubleValue());
+                case "exp":
+                    return Math.exp(((Number) args.get(0)).doubleValue());
+                case "floor":
+                    return Math.floor(((Number) args.get(0)).doubleValue());
+                case "ceil":
+                    return Math.ceil(((Number) args.get(0)).doubleValue());
+                case "round":
+                    return Math.round(((Number) args.get(0)).doubleValue());
+                case "random":
+                    return Math.random();
+                default:
+                    return null;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Static method error: " + e.getMessage(), e);
         }
     }
     
@@ -572,5 +707,287 @@ public class StandardLibrary {
         }
         
         return null;
+    }
+    
+    private Object invokeClassMethod(Class<?> clazz, String methodName, List<Object> args) {
+        try {
+            switch (methodName) {
+                case "forName":
+                    String className = (String) args.get(0);
+                    return Class.forName(className);
+                case "getName":
+                    return clazz.getName();
+                case "getSimpleName":
+                    return clazz.getSimpleName();
+                case "getCanonicalName":
+                    return clazz.getCanonicalName();
+                case "isInterface":
+                    return clazz.isInterface();
+                case "isArray":
+                    return clazz.isArray();
+                case "isPrimitive":
+                    return clazz.isPrimitive();
+                case "isAnnotation":
+                    return clazz.isAnnotation();
+                case "isEnum":
+                    return clazz.isEnum();
+                case "getSuperclass":
+                    return clazz.getSuperclass();
+                case "getInterfaces":
+                    return clazz.getInterfaces();
+                case "getMethods":
+                    return clazz.getMethods();
+                case "getDeclaredMethods":
+                    return clazz.getDeclaredMethods();
+                case "getFields":
+                    return clazz.getFields();
+                case "getDeclaredFields":
+                    return clazz.getDeclaredFields();
+                case "getConstructors":
+                    return clazz.getConstructors();
+                case "getDeclaredConstructors":
+                    return clazz.getDeclaredConstructors();
+                case "getMethod":
+                    String methodNameArg = (String) args.get(0);
+                    Class<?>[] paramTypes = extractParamTypes(args, 1);
+                    return clazz.getMethod(methodNameArg, paramTypes);
+                case "getDeclaredMethod":
+                    String declaredMethodName = (String) args.get(0);
+                    Class<?>[] declaredParamTypes = extractParamTypes(args, 1);
+                    return clazz.getDeclaredMethod(declaredMethodName, declaredParamTypes);
+                case "getField":
+                    return clazz.getField((String) args.get(0));
+                case "getDeclaredField":
+                    return clazz.getDeclaredField((String) args.get(0));
+                case "getConstructor":
+                    return clazz.getConstructor(extractParamTypes(args, 0));
+                case "getDeclaredConstructor":
+                    return clazz.getDeclaredConstructor(extractParamTypes(args, 0));
+                case "newInstance":
+                    return clazz.getDeclaredConstructor().newInstance();
+                case "getClassLoader":
+                    return clazz.getClassLoader();
+                case "getModifiers":
+                    return clazz.getModifiers();
+                case "getPackage":
+                    return clazz.getPackage();
+                case "cast":
+                    return clazz.cast(args.get(0));
+                case "isInstance":
+                    return clazz.isInstance(args.get(0));
+                case "isAssignableFrom":
+                    Class<?> otherClass = (Class<?>) args.get(0);
+                    return clazz.isAssignableFrom(otherClass);
+                default:
+                    return null;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Reflection error: " + e.getMessage(), e);
+        }
+    }
+    
+    private Class<?>[] extractParamTypes(List<Object> args, int startIndex) {
+        if (args.size() <= startIndex) {
+            return new Class<?>[0];
+        }
+        List<Class<?>> types = new ArrayList<>();
+        for (int i = startIndex; i < args.size(); i++) {
+            Object arg = args.get(i);
+            if (arg instanceof Class) {
+                types.add((Class<?>) arg);
+            }
+        }
+        return types.toArray(new Class<?>[0]);
+    }
+    
+    private Object invokeReflectionMethod(Method method, String methodName, List<Object> args) {
+        try {
+            if (methodName.equals("invoke")) {
+                if (args.isEmpty()) {
+                    return method.invoke(null);
+                }
+                Object invokeTarget = args.get(0);
+                Object[] invokeArgs = args.size() > 1 ? 
+                    args.subList(1, args.size()).toArray() : new Object[0];
+                return method.invoke(invokeTarget, invokeArgs);
+            }
+            
+            switch (methodName) {
+                case "getName":
+                    return method.getName();
+                case "getReturnType":
+                    return method.getReturnType();
+                case "getParameterTypes":
+                    return method.getParameterTypes();
+                case "getDeclaringClass":
+                    return method.getDeclaringClass();
+                case "getModifiers":
+                    return method.getModifiers();
+                case "setAccessible":
+                    method.setAccessible((Boolean) args.get(0));
+                    return null;
+                case "getAnnotation":
+                    @SuppressWarnings("unchecked")
+                    Class<? extends java.lang.annotation.Annotation> annotationClass = 
+                        (Class<? extends java.lang.annotation.Annotation>) args.get(0);
+                    return method.getAnnotation(annotationClass);
+                case "getAnnotations":
+                    return method.getAnnotations();
+                case "isAccessible":
+                    return method.isAccessible();
+                default:
+                    return null;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Method reflection error: " + e.getMessage(), e);
+        }
+    }
+    
+    private Object invokeFieldMethod(Field field, List<Object> args) {
+        try {
+            String methodName = "";
+            if (args.isEmpty()) {
+                if (field.getType() == int.class) return field.getInt(null);
+                if (field.getType() == long.class) return field.getLong(null);
+                if (field.getType() == double.class) return field.getDouble(null);
+                if (field.getType() == float.class) return field.getFloat(null);
+                if (field.getType() == boolean.class) return field.getBoolean(null);
+                if (field.getType() == char.class) return field.getChar(null);
+                if (field.getType() == short.class) return field.getShort(null);
+                if (field.getType() == byte.class) return field.getByte(null);
+                return field.get(null);
+            }
+            
+            Object arg = args.get(0);
+            if (arg instanceof String) {
+                methodName = (String) arg;
+            } else if (arg instanceof Boolean) {
+                field.setAccessible((Boolean) arg);
+                return null;
+            } else {
+                if (args.size() == 1) {
+                    return field.get(arg);
+                } else {
+                    field.set(arg, args.get(1));
+                    return null;
+                }
+            }
+            
+            switch (methodName) {
+                case "getName":
+                    return field.getName();
+                case "getType":
+                    return field.getType();
+                case "getDeclaringClass":
+                    return field.getDeclaringClass();
+                case "getModifiers":
+                    return field.getModifiers();
+                case "setAccessible":
+                    field.setAccessible((Boolean) args.get(1));
+                    return null;
+                case "getAnnotation":
+                    @SuppressWarnings("unchecked")
+                    Class<? extends java.lang.annotation.Annotation> fieldAnnotationClass = 
+                        (Class<? extends java.lang.annotation.Annotation>) args.get(1);
+                    return field.getAnnotation(fieldAnnotationClass);
+                case "getAnnotations":
+                    return field.getAnnotations();
+                case "isAccessible":
+                    return field.isAccessible();
+                default:
+                    return null;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Field reflection error: " + e.getMessage(), e);
+        }
+    }
+    
+    private Object invokeConstructorMethod(Constructor<?> constructor, List<Object> args) {
+        try {
+            String methodName = args.isEmpty() ? "newInstance" : "";
+            if (args.size() > 0 && args.get(0) instanceof String) {
+                methodName = (String) args.get(0);
+            }
+            
+            switch (methodName) {
+                case "newInstance":
+                    Object[] initArgs = args.isEmpty() ? new Object[0] : args.toArray();
+                    return constructor.newInstance(initArgs);
+                case "getName":
+                    return constructor.getName();
+                case "getParameterTypes":
+                    return constructor.getParameterTypes();
+                case "getDeclaringClass":
+                    return constructor.getDeclaringClass();
+                case "getModifiers":
+                    return constructor.getModifiers();
+                case "setAccessible":
+                    constructor.setAccessible((Boolean) args.get(1));
+                    return null;
+                default:
+                    Object[] createArgs = args.toArray();
+                    return constructor.newInstance(createArgs);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Constructor reflection error: " + e.getMessage(), e);
+        }
+    }
+    
+    private Object invokeScriptClassMethod(ScriptClass scriptClass, String methodName, List<Object> args) {
+        try {
+            switch (methodName) {
+                case "getName":
+                    return scriptClass.getName();
+                case "getSimpleName":
+                    return scriptClass.getName();
+                case "getCanonicalName":
+                    return scriptClass.getQualifiedName();
+                case "isInterface":
+                    return scriptClass.getAstNode() instanceof InterfaceDeclaration;
+                case "isArray":
+                    return false;
+                case "isPrimitive":
+                    return false;
+                case "getSuperclass":
+                    return scriptClass.getSuperClass();
+                case "getInterfaces":
+                    return scriptClass.getInterfaces();
+                case "getFields":
+                    return new java.util.ArrayList<>(scriptClass.getFields().values());
+                case "getMethods":
+                    java.util.List<ScriptMethod> allMethods = new java.util.ArrayList<>();
+                    for (java.util.List<ScriptMethod> methodList : scriptClass.getMethods().values()) {
+                        allMethods.addAll(methodList);
+                    }
+                    return allMethods;
+                case "getConstructors":
+                    return scriptClass.getConstructors();
+                case "getField":
+                    return scriptClass.getField((String) args.get(0));
+                case "getMethod":
+                    String methodNameArg = (String) args.get(0);
+                    return scriptClass.getMethod(methodNameArg, args.size() > 1 ? args.subList(1, args.size()) : new java.util.ArrayList<>());
+                case "newInstance":
+                    ScriptMethod constructor = findBestConstructor(scriptClass, args);
+                    if (constructor != null) {
+                        RuntimeObject instance = new RuntimeObject(scriptClass);
+                        return instance;
+                    }
+                    return null;
+                default:
+                    return null;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("ScriptClass reflection error: " + e.getMessage(), e);
+        }
+    }
+    
+    private ScriptMethod findBestConstructor(ScriptClass scriptClass, List<Object> args) {
+        for (ScriptMethod constructor : scriptClass.getConstructors()) {
+            if (constructor.getParameters().size() == args.size()) {
+                return constructor;
+            }
+        }
+        return scriptClass.getConstructors().isEmpty() ? null : scriptClass.getConstructors().get(0);
     }
 }

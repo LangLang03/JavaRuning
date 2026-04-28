@@ -119,6 +119,34 @@ public class Interpreter implements ASTVisitor<Object> {
     
     @Override
     public Object visitImportDeclaration(ImportDeclaration node) {
+        String importName = node.getName();
+        boolean isStatic = node.isStatic();
+        boolean isAsterisk = node.isAsterisk();
+        
+        if (isStatic && !isAsterisk) {
+            int lastDot = importName.lastIndexOf('.');
+            if (lastDot > 0) {
+                String memberName = importName.substring(lastDot + 1);
+                Object staticMember = stdLib.resolveStaticImport(memberName);
+                if (staticMember != null) {
+                    currentEnv.defineVariable(memberName, staticMember);
+                }
+            }
+        } else if (isStatic && isAsterisk) {
+            // Handle static wildcard imports like: import static java.lang.Math.*;
+            // Common Math functions
+            String[] mathFunctions = {"sqrt", "pow", "abs", "max", "min", "sin", "cos", "tan", 
+                                      "log", "exp", "floor", "ceil", "round", "random"};
+            for (String func : mathFunctions) {
+                Object staticMember = stdLib.resolveStaticImport(func);
+                if (staticMember != null) {
+                    currentEnv.defineVariable(func, staticMember);
+                }
+            }
+            currentEnv.defineVariable("PI", Math.PI);
+            currentEnv.defineVariable("E", Math.E);
+        }
+        
         return null;
     }
     
@@ -1124,12 +1152,37 @@ public class Interpreter implements ASTVisitor<Object> {
             Object var = currentEnv.getVariable(node.getMethodName());
             if (var instanceof ScriptClass) {
                 target = var;
+            } else if (var instanceof StandardLibrary.StaticMethodHolder) {
+                return ((StandardLibrary.StaticMethodHolder) var).invoke(args);
             }
         }
         
         if (target == null && node.getTarget() instanceof IdentifierExpression) {
             String varName = ((IdentifierExpression) node.getTarget()).getName();
             target = currentEnv.getVariable(varName);
+            
+            if (target == null) {
+                ScriptClass scriptClass = globalEnv.getClass(varName);
+                if (scriptClass != null) {
+                    target = scriptClass;
+                }
+            }
+        }
+        
+        if (target instanceof Class) {
+            return stdLib.invokeMethod(target, node.getMethodName(), args);
+        }
+        
+        if (target instanceof java.lang.reflect.Method) {
+            return stdLib.invokeMethod(target, node.getMethodName(), args);
+        }
+        
+        if (target instanceof java.lang.reflect.Field) {
+            return stdLib.invokeMethod(target, node.getMethodName(), args);
+        }
+        
+        if (target instanceof java.lang.reflect.Constructor) {
+            return stdLib.invokeMethod(target, node.getMethodName(), args);
         }
         
         if (target instanceof ScriptClass) {
@@ -1142,6 +1195,11 @@ public class Interpreter implements ASTVisitor<Object> {
         
         if (target instanceof RuntimeObject) {
             RuntimeObject obj = (RuntimeObject) target;
+            
+            if (node.getMethodName().equals("getClass") && args.isEmpty()) {
+                return obj.getScriptClass();
+            }
+            
             ScriptMethod method = obj.getScriptClass().getMethod(node.getMethodName(), args);
             if (method != null) {
                 return invokeMethod(obj, method, args);
@@ -1170,6 +1228,10 @@ public class Interpreter implements ASTVisitor<Object> {
         
         if (target instanceof MethodReferenceObject) {
             return invokeMethodReference((MethodReferenceObject) target, args);
+        }
+        
+        if (target instanceof StandardLibrary.StaticMethodHolder) {
+            return stdLib.invokeMethod(target, node.getMethodName(), args);
         }
         
         return stdLib.invokeMethod(target, node.getMethodName(), args);
@@ -1281,6 +1343,21 @@ public class Interpreter implements ASTVisitor<Object> {
     }
     
     private Object invokeMethod(RuntimeObject target, ScriptMethod method, List<Object> args) {
+        if (method instanceof NativeMethod) {
+            NativeMethod nativeMethod = (NativeMethod) method;
+            Object[] fullArgs;
+            if (method.isStatic()) {
+                fullArgs = args.toArray();
+            } else {
+                fullArgs = new Object[args.size() + 1];
+                fullArgs[0] = target;
+                for (int i = 0; i < args.size(); i++) {
+                    fullArgs[i + 1] = args.get(i);
+                }
+            }
+            return nativeMethod.getNativeImplementation().apply(fullArgs);
+        }
+        
         Environment previous = currentEnv;
         currentEnv = new Environment(globalEnv);
         
@@ -1321,7 +1398,14 @@ public class Interpreter implements ASTVisitor<Object> {
             ScriptClass scriptClass = (ScriptClass) target;
             ScriptField field = scriptClass.getField(node.getFieldName());
             if (field != null && field.isStatic()) {
-                return scriptClass.getFields().get(node.getFieldName());
+                String varName = scriptClass.getName() + "." + node.getFieldName();
+                if (currentEnv.hasVariable(varName)) {
+                    return currentEnv.getVariable(varName);
+                }
+                if (globalEnv.hasVariable(varName)) {
+                    return globalEnv.getVariable(varName);
+                }
+                return null;
             }
             
             if (currentEnv.hasVariable(node.getFieldName())) {
@@ -1636,7 +1720,64 @@ public class Interpreter implements ASTVisitor<Object> {
     
     @Override
     public Object visitClassLiteralExpression(ClassLiteralExpression node) {
-        return resolveClass(node.getType());
+        Type type = node.getType();
+        String typeName = type.getName();
+        
+        if (typeName == null) {
+            return resolveClass(type);
+        }
+        
+        if (typeName.equals("int")) return int.class;
+        if (typeName.equals("long")) return long.class;
+        if (typeName.equals("short")) return short.class;
+        if (typeName.equals("byte")) return byte.class;
+        if (typeName.equals("char")) return char.class;
+        if (typeName.equals("boolean")) return boolean.class;
+        if (typeName.equals("float")) return float.class;
+        if (typeName.equals("double")) return double.class;
+        if (typeName.equals("void")) return void.class;
+        
+        try {
+            if (typeName.equals("String") || typeName.equals("java.lang.String")) return String.class;
+            if (typeName.equals("Object") || typeName.equals("java.lang.Object")) return Object.class;
+            if (typeName.equals("Class") || typeName.equals("java.lang.Class")) return Class.class;
+            if (typeName.equals("Integer") || typeName.equals("java.lang.Integer")) return Integer.class;
+            if (typeName.equals("Long") || typeName.equals("java.lang.Long")) return Long.class;
+            if (typeName.equals("Double") || typeName.equals("java.lang.Double")) return Double.class;
+            if (typeName.equals("Float") || typeName.equals("java.lang.Float")) return Float.class;
+            if (typeName.equals("Boolean") || typeName.equals("java.lang.Boolean")) return Boolean.class;
+            if (typeName.equals("Character") || typeName.equals("java.lang.Character")) return Character.class;
+            if (typeName.equals("Number") || typeName.equals("java.lang.Number")) return Number.class;
+            if (typeName.equals("Exception") || typeName.equals("java.lang.Exception")) return Exception.class;
+            if (typeName.equals("RuntimeException") || typeName.equals("java.lang.RuntimeException")) return RuntimeException.class;
+            if (typeName.equals("Throwable") || typeName.equals("java.lang.Throwable")) return Throwable.class;
+            if (typeName.equals("StringBuilder") || typeName.equals("java.lang.StringBuilder")) return StringBuilder.class;
+            if (typeName.equals("ArrayList") || typeName.equals("java.util.ArrayList")) return java.util.ArrayList.class;
+            if (typeName.equals("List") || typeName.equals("java.util.List")) return java.util.List.class;
+            if (typeName.equals("Map") || typeName.equals("java.util.Map")) return java.util.Map.class;
+            if (typeName.equals("Set") || typeName.equals("java.util.Set")) return java.util.Set.class;
+            if (typeName.equals("Collection") || typeName.equals("java.util.Collection")) return java.util.Collection.class;
+            if (typeName.equals("Iterable") || typeName.equals("java.lang.Iterable")) return Iterable.class;
+            if (typeName.equals("Comparable") || typeName.equals("java.lang.Comparable")) return Comparable.class;
+            if (typeName.equals("Runnable") || typeName.equals("java.lang.Runnable")) return Runnable.class;
+            if (typeName.equals("Function") || typeName.equals("java.util.function.Function")) return java.util.function.Function.class;
+            if (typeName.equals("Consumer") || typeName.equals("java.util.function.Consumer")) return java.util.function.Consumer.class;
+            if (typeName.equals("Supplier") || typeName.equals("java.util.function.Supplier")) return java.util.function.Supplier.class;
+            if (typeName.equals("Predicate") || typeName.equals("java.util.function.Predicate")) return java.util.function.Predicate.class;
+            
+            ScriptClass scriptClass = resolveClass(type);
+            if (scriptClass != null) {
+                return scriptClass;
+            }
+            
+            try {
+                return Class.forName(typeName);
+            } catch (ClassNotFoundException e) {
+                return resolveClass(type);
+            }
+        } catch (Exception e) {
+            return resolveClass(type);
+        }
     }
     
     @Override
@@ -1676,6 +1817,10 @@ public class Interpreter implements ASTVisitor<Object> {
     
     private ScriptClass resolveClass(Type type) {
         String name = type.getName();
+        
+        if (name == null) {
+            return null;
+        }
         
         if (name.equals("int") || name.equals("long") || name.equals("short") ||
             name.equals("byte") || name.equals("char") || name.equals("boolean") ||

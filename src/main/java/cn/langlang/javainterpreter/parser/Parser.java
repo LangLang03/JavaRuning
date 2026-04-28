@@ -817,11 +817,22 @@ public class Parser {
                         expression = superExpr;
                     }
                 } else if (match(TokenType.THIS)) {
-                    expression = new ThisExpression(previous(), 
-                        ((IdentifierExpression) expression).getName());
+                    String className = null;
+                    if (expression instanceof IdentifierExpression) {
+                        className = ((IdentifierExpression) expression).getName();
+                    } else if (expression instanceof ClassLiteralExpression) {
+                        className = ((ClassLiteralExpression) expression).getType().getName();
+                    }
+                    expression = new ThisExpression(previous(), className);
                 } else if (match(TokenType.CLASS)) {
+                    String typeName = null;
+                    if (expression instanceof IdentifierExpression) {
+                        typeName = ((IdentifierExpression) expression).getName();
+                    } else if (expression instanceof ClassLiteralExpression) {
+                        typeName = ((ClassLiteralExpression) expression).getType().getName();
+                    }
                     expression = new ClassLiteralExpression(previous(), 
-                        new Type(expression.getToken(), ((IdentifierExpression) expression).getName(), 
+                        new Type(expression.getToken(), typeName, 
                                 new ArrayList<>(), 0, annotations));
                 } else {
                     String name = consume(TokenType.IDENTIFIER, "Expected identifier").getLexeme();
@@ -1485,11 +1496,22 @@ public class Parser {
                         expression = superExpr;
                     }
                 } else if (match(TokenType.THIS)) {
-                    expression = new ThisExpression(previous(), 
-                        ((IdentifierExpression) expression).getName());
+                    String className = null;
+                    if (expression instanceof IdentifierExpression) {
+                        className = ((IdentifierExpression) expression).getName();
+                    } else if (expression instanceof ClassLiteralExpression) {
+                        className = ((ClassLiteralExpression) expression).getType().getName();
+                    }
+                    expression = new ThisExpression(previous(), className);
                 } else if (match(TokenType.CLASS)) {
+                    String typeName = null;
+                    if (expression instanceof IdentifierExpression) {
+                        typeName = ((IdentifierExpression) expression).getName();
+                    } else if (expression instanceof ClassLiteralExpression) {
+                        typeName = ((ClassLiteralExpression) expression).getType().getName();
+                    }
                     expression = new ClassLiteralExpression(previous(), 
-                        new Type(expression.getToken(), ((IdentifierExpression) expression).getName(), 
+                        new Type(expression.getToken(), typeName, 
                                 new ArrayList<>(), 0, annotations));
                 } else {
                     String name = consume(TokenType.IDENTIFIER, "Expected identifier").getLexeme();
