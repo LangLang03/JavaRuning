@@ -210,7 +210,7 @@ public class Parser {
             exceptionTypes = parseTypeList();
         }
         
-        boolean isDefault = match(TokenType.DEFAULT);
+        boolean isDefault = (modifiers & Modifier.DEFAULT) != 0;
         
         BlockStatement body = null;
         if (match(TokenType.LBRACE)) {
@@ -572,10 +572,15 @@ public class Parser {
         }
         
         int arrayDimensions = 0;
-        while (match(TokenType.LBRACKET)) {
-            parseAnnotations();
-            consume(TokenType.RBRACKET, "Expected ']' after '['");
-            arrayDimensions++;
+        while (true) {
+            List<Annotation> dimAnnotations = parseAnnotations();
+            if (match(TokenType.LBRACKET)) {
+                parseAnnotations();
+                consume(TokenType.RBRACKET, "Expected ']' after '['");
+                arrayDimensions++;
+            } else {
+                break;
+            }
         }
         
         return new Type(token, name, typeArguments, arrayDimensions, annotations);
@@ -920,9 +925,14 @@ public class Parser {
                     }
                 }
                 
-                while (match(TokenType.LBRACKET)) {
+                while (true) {
                     parseAnnotations();
-                    if (!match(TokenType.RBRACKET)) return false;
+                    if (match(TokenType.LBRACKET)) {
+                        parseAnnotations();
+                        if (!match(TokenType.RBRACKET)) return false;
+                    } else {
+                        break;
+                    }
                 }
                 
                 return check(TokenType.IDENTIFIER);
@@ -1720,7 +1730,33 @@ public class Parser {
     
     private Expression parseNewExpression() {
         Token token = previous();
-        Type type = parseType();
+        
+        List<Annotation> annotations = parseAnnotations();
+        Token typeToken = peek();
+        
+        String name;
+        if (match(TokenType.INT)) name = "int";
+        else if (match(TokenType.LONG)) name = "long";
+        else if (match(TokenType.SHORT)) name = "short";
+        else if (match(TokenType.BYTE)) name = "byte";
+        else if (match(TokenType.CHAR)) name = "char";
+        else if (match(TokenType.BOOLEAN)) name = "boolean";
+        else if (match(TokenType.FLOAT)) name = "float";
+        else if (match(TokenType.DOUBLE)) name = "double";
+        else {
+            name = parseQualifiedName();
+        }
+        
+        List<TypeArgument> typeArguments = new ArrayList<>();
+        if (match(TokenType.LT)) {
+            if (match(TokenType.GT)) {
+                typeArguments = new ArrayList<>();
+            } else {
+                typeArguments = parseTypeArguments();
+            }
+        }
+        
+        Type type = new Type(typeToken, name, typeArguments, 0, annotations);
         
         if (match(TokenType.LBRACKET)) {
             return parseNewArrayExpression(token, type);

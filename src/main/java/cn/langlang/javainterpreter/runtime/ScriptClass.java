@@ -157,8 +157,8 @@ public class ScriptClass {
         if (typeName.equals("byte")) return value instanceof Byte || value instanceof Integer;
         if (typeName.equals("char")) return value instanceof Character;
         if (typeName.equals("boolean")) return value instanceof Boolean;
-        if (typeName.equals("float")) return value instanceof Float || value instanceof Double;
-        if (typeName.equals("double")) return value instanceof Double || value instanceof Float;
+        if (typeName.equals("float")) return value instanceof Float || value instanceof Double || value instanceof Integer || value instanceof Long;
+        if (typeName.equals("double")) return value instanceof Double || value instanceof Float || value instanceof Integer || value instanceof Long;
         return false;
     }
     

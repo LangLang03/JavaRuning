@@ -338,6 +338,26 @@ public class StandardLibrary {
             }
         }
         
+        if (target instanceof Throwable) {
+            Throwable throwable = (Throwable) target;
+            if (methodName.equals("getMessage")) {
+                return throwable.getMessage();
+            } else if (methodName.equals("getLocalizedMessage")) {
+                return throwable.getLocalizedMessage();
+            } else if (methodName.equals("getCause")) {
+                return throwable.getCause();
+            } else if (methodName.equals("printStackTrace")) {
+                throwable.printStackTrace();
+                return null;
+            } else if (methodName.equals("toString")) {
+                return throwable.toString();
+            } else if (methodName.equals("fillInStackTrace")) {
+                return throwable.fillInStackTrace();
+            } else if (methodName.equals("getStackTrace")) {
+                return throwable.getStackTrace();
+            }
+        }
+        
         return null;
     }
     
@@ -443,6 +463,58 @@ public class StandardLibrary {
             case "java.lang.String":
                 if (args.isEmpty()) return "";
                 return String.valueOf(args.get(0));
+            case "IOException":
+            case "java.io.IOException":
+                if (args.isEmpty()) return new java.io.IOException();
+                return new java.io.IOException(String.valueOf(args.get(0)));
+            case "Exception":
+            case "java.lang.Exception":
+                if (args.isEmpty()) return new Exception();
+                return new Exception(String.valueOf(args.get(0)));
+            case "RuntimeException":
+            case "java.lang.RuntimeException":
+                if (args.isEmpty()) return new RuntimeException();
+                return new RuntimeException(String.valueOf(args.get(0)));
+            case "IllegalArgumentException":
+            case "java.lang.IllegalArgumentException":
+                if (args.isEmpty()) return new IllegalArgumentException();
+                return new IllegalArgumentException(String.valueOf(args.get(0)));
+            case "NullPointerException":
+            case "java.lang.NullPointerException":
+                if (args.isEmpty()) return new NullPointerException();
+                return new NullPointerException(String.valueOf(args.get(0)));
+            case "ArithmeticException":
+            case "java.lang.ArithmeticException":
+                if (args.isEmpty()) return new ArithmeticException();
+                return new ArithmeticException(String.valueOf(args.get(0)));
+            case "IndexOutOfBoundsException":
+            case "java.lang.IndexOutOfBoundsException":
+                if (args.isEmpty()) return new IndexOutOfBoundsException();
+                return new IndexOutOfBoundsException(String.valueOf(args.get(0)));
+            case "ArrayIndexOutOfBoundsException":
+            case "java.lang.ArrayIndexOutOfBoundsException":
+                if (args.isEmpty()) return new ArrayIndexOutOfBoundsException();
+                return new ArrayIndexOutOfBoundsException(String.valueOf(args.get(0)));
+            case "ClassCastException":
+            case "java.lang.ClassCastException":
+                if (args.isEmpty()) return new ClassCastException();
+                return new ClassCastException(String.valueOf(args.get(0)));
+            case "NumberFormatException":
+            case "java.lang.NumberFormatException":
+                if (args.isEmpty()) return new NumberFormatException();
+                return new NumberFormatException(String.valueOf(args.get(0)));
+            case "UnsupportedOperationException":
+            case "java.lang.UnsupportedOperationException":
+                if (args.isEmpty()) return new UnsupportedOperationException();
+                return new UnsupportedOperationException(String.valueOf(args.get(0)));
+            case "Throwable":
+            case "java.lang.Throwable":
+                if (args.isEmpty()) return new Throwable();
+                return new Throwable(String.valueOf(args.get(0)));
+            case "Error":
+            case "java.lang.Error":
+                if (args.isEmpty()) return new Error();
+                return new Error(String.valueOf(args.get(0)));
             default:
                 return null;
         }
@@ -458,7 +530,16 @@ public class StandardLibrary {
             case "err": return System.err;
             case "PI": return Math.PI;
             case "E": return Math.E;
+            case "System": return new SystemHolder();
             default: return null;
+        }
+    }
+    
+    public static class SystemHolder {
+        public Object getField(String name) {
+            if (name.equals("out")) return System.out;
+            if (name.equals("err")) return System.err;
+            return null;
         }
     }
     
