@@ -56,6 +56,13 @@ public class RuntimeObject {
     
     @Override
     public String toString() {
+        if (scriptClass instanceof ScriptEnum) {
+            Object name = fields.get("name");
+            if (name != null) {
+                return name.toString();
+            }
+        }
+        
         Interpreter interpreter = currentInterpreter.get();
         if (interpreter != null) {
             ScriptMethod toStringMethod = scriptClass.getMethod("toString", Collections.emptyList());
