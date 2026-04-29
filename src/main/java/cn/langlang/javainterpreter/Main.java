@@ -13,6 +13,7 @@ public class Main {
         "Usage: java Main [options] <file.java>...\n" +
         "Options:\n" +
         "  -cp <path>    Additional classpath for imports\n" +
+        "  -main <class> Specify main class name\n" +
         "  -v, --version Show version\n" +
         "  -h, --help    Show this help\n" +
         "First file is treated as main if it contains main method.";
@@ -25,6 +26,7 @@ public class Main {
 
         List<String> files = new ArrayList<>();
         List<String> classpaths = new ArrayList<>();
+        String mainClass = null;
 
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
@@ -40,6 +42,11 @@ public class Main {
                 case "-cp":
                     if (i + 1 < args.length) {
                         classpaths.add(args[++i]);
+                    }
+                    break;
+                case "-main":
+                    if (i + 1 < args.length) {
+                        mainClass = args[++i];
                     }
                     break;
                 default:
@@ -71,6 +78,10 @@ public class Main {
             String source = new String(Files.readAllBytes(Paths.get(file)), "UTF-8").trim();
             String fileName = new File(file).getName();
             interpreter.load(source, fileName);
+        }
+        
+        if (mainClass != null) {
+            interpreter.setMainClassName(mainClass);
         }
 
         try {

@@ -4,11 +4,12 @@ import cn.langlang.javainterpreter.ast.declaration.ParameterDeclaration;
 import cn.langlang.javainterpreter.ast.statement.BlockStatement;
 import cn.langlang.javainterpreter.ast.type.Type;
 import cn.langlang.javainterpreter.ast.misc.Annotation;
+import cn.langlang.javainterpreter.interpreter.ExecutionContext;
 import cn.langlang.javainterpreter.parser.Modifier;
 import java.util.*;
 import java.util.function.Function;
 
-public class ScriptMethod {
+public class ScriptMethod implements Callable {
     private final String name;
     private final int modifiers;
     private final Type returnType;
@@ -89,5 +90,10 @@ public class ScriptMethod {
     
     public boolean isAbstract() {
         return (modifiers & Modifier.ABSTRACT) != 0;
+    }
+    
+    @Override
+    public Object call(ExecutionContext context, Object target, List<Object> arguments) {
+        return context.invokeMethod(target, this, arguments);
     }
 }

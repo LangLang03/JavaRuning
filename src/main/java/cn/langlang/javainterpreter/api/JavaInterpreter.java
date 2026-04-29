@@ -26,6 +26,10 @@ public class JavaInterpreter {
         this.loadedUnits = new HashMap<>();
     }
     
+    public void setMainClassName(String className) {
+        this.mainClassName = className;
+    }
+    
     public void load(String source) {
         load(source, null);
     }
