@@ -1,7 +1,10 @@
 package cn.langlang.javainterpreter.annotation;
 
-import cn.langlang.javainterpreter.ast.*;
-import cn.langlang.javainterpreter.runtime.*;
+import cn.langlang.javainterpreter.ast.base.ASTNode;
+import cn.langlang.javainterpreter.ast.declaration.*;
+import cn.langlang.javainterpreter.ast.misc.Annotation;
+import cn.langlang.javainterpreter.ast.statement.LocalVariableDeclaration;
+import cn.langlang.javainterpreter.runtime.model.ScriptClass;
 import java.util.*;
 
 public class ProcessingContext {

@@ -1,7 +1,12 @@
 package cn.langlang.javainterpreter.parser;
 
 import cn.langlang.javainterpreter.lexer.*;
-import cn.langlang.javainterpreter.ast.*;
+import cn.langlang.javainterpreter.ast.base.ASTNode;
+import cn.langlang.javainterpreter.ast.declaration.*;
+import cn.langlang.javainterpreter.ast.expression.*;
+import cn.langlang.javainterpreter.ast.misc.*;
+import cn.langlang.javainterpreter.ast.statement.*;
+import cn.langlang.javainterpreter.ast.type.*;
 import java.util.*;
 
 public class Parser {

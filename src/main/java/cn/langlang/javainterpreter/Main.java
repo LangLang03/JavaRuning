@@ -1,8 +1,8 @@
 package cn.langlang.javainterpreter;
 
 import cn.langlang.javainterpreter.api.JavaInterpreter;
-import cn.langlang.javainterpreter.interpreter.InterpreterException;
-import cn.langlang.javainterpreter.runtime.ScriptClass;
+import cn.langlang.javainterpreter.interpreter.exception.InterpreterException;
+import cn.langlang.javainterpreter.runtime.model.ScriptClass;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;

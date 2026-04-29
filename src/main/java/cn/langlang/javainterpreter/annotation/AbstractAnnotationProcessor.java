@@ -1,7 +1,6 @@
 package cn.langlang.javainterpreter.annotation;
 
-import cn.langlang.javainterpreter.ast.*;
-import cn.langlang.javainterpreter.runtime.*;
+import cn.langlang.javainterpreter.ast.declaration.TypeDeclaration;
 import java.util.*;
 
 public abstract class AbstractAnnotationProcessor implements AnnotationProcessor {

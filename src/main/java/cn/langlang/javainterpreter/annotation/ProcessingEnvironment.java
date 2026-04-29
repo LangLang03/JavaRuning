@@ -1,8 +1,12 @@
 package cn.langlang.javainterpreter.annotation;
 
-import cn.langlang.javainterpreter.interpreter.*;
-import cn.langlang.javainterpreter.runtime.*;
-import cn.langlang.javainterpreter.ast.*;
+import cn.langlang.javainterpreter.interpreter.Interpreter;
+import cn.langlang.javainterpreter.runtime.environment.Environment;
+import cn.langlang.javainterpreter.runtime.model.ScriptClass;
+import cn.langlang.javainterpreter.runtime.model.ScriptField;
+import cn.langlang.javainterpreter.runtime.model.ScriptMethod;
+import cn.langlang.javainterpreter.ast.declaration.*;
+import cn.langlang.javainterpreter.ast.misc.Annotation;
 import java.util.*;
 
 public class ProcessingEnvironment {

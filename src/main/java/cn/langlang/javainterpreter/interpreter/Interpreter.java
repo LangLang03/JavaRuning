@@ -1,9 +1,19 @@
 package cn.langlang.javainterpreter.interpreter;
 
-import cn.langlang.javainterpreter.ast.*;
+import cn.langlang.javainterpreter.ast.base.ASTNode;
+import cn.langlang.javainterpreter.ast.base.ASTVisitor;
+import cn.langlang.javainterpreter.ast.declaration.*;
+import cn.langlang.javainterpreter.ast.expression.*;
+import cn.langlang.javainterpreter.ast.misc.*;
+import cn.langlang.javainterpreter.ast.statement.*;
+import cn.langlang.javainterpreter.ast.type.*;
+import cn.langlang.javainterpreter.interpreter.exception.*;
 import cn.langlang.javainterpreter.lexer.TokenType;
 import cn.langlang.javainterpreter.parser.Modifier;
-import cn.langlang.javainterpreter.runtime.*;
+import cn.langlang.javainterpreter.runtime.environment.Environment;
+import cn.langlang.javainterpreter.runtime.model.*;
+import cn.langlang.javainterpreter.runtime.nativesupport.NativeMethod;
+import cn.langlang.javainterpreter.runtime.nativesupport.StandardLibrary;
 import java.util.*;
 import java.util.function.*;
 
@@ -208,7 +218,7 @@ public class Interpreter implements ASTVisitor<Object> {
         scriptClass.setInitialized(true);
     }
     
-    private Object getDefaultValue(cn.langlang.javainterpreter.ast.Type type) {
+    private Object getDefaultValue(cn.langlang.javainterpreter.ast.type.Type type) {
         if (type == null) return null;
         String typeName = type.getName();
         if (typeName.equals("int")) return 0;
@@ -2107,12 +2117,12 @@ public class Interpreter implements ASTVisitor<Object> {
             List<ParameterDeclaration> params = new ArrayList<>();
             java.lang.reflect.Parameter[] reflectParams = method.getParameters();
             for (java.lang.reflect.Parameter param : reflectParams) {
-                cn.langlang.javainterpreter.ast.Type paramType = createTypeFromJavaType(param.getType());
+                cn.langlang.javainterpreter.ast.type.Type paramType = createTypeFromJavaType(param.getType());
                 params.add(new ParameterDeclaration(null, 0, paramType, param.getName(), 
                     false, new ArrayList<>()));
             }
             
-            cn.langlang.javainterpreter.ast.Type returnType = createTypeFromJavaType(method.getReturnType());
+            cn.langlang.javainterpreter.ast.type.Type returnType = createTypeFromJavaType(method.getReturnType());
             ScriptMethod scriptMethod = new ScriptMethod(
                 method.getName(), Modifier.PUBLIC | Modifier.ABSTRACT, returnType,
                 params, method.isVarArgs(), null, iface, false, false, new ArrayList<>()
@@ -2131,19 +2141,19 @@ public class Interpreter implements ASTVisitor<Object> {
         return scriptClass;
     }
     
-    private cn.langlang.javainterpreter.ast.Type createTypeFromJavaType(Class<?> type) {
+    private cn.langlang.javainterpreter.ast.type.Type createTypeFromJavaType(Class<?> type) {
         String typeName;
         if (type.isPrimitive()) {
             typeName = type.getName();
         } else if (type.isArray()) {
             Class<?> componentType = type.getComponentType();
-            cn.langlang.javainterpreter.ast.Type component = createTypeFromJavaType(componentType);
-            return new cn.langlang.javainterpreter.ast.Type(null, component.getName(), 
+            cn.langlang.javainterpreter.ast.type.Type component = createTypeFromJavaType(componentType);
+            return new cn.langlang.javainterpreter.ast.type.Type(null, component.getName(), 
                 component.getTypeArguments(), component.getArrayDimensions() + 1, new ArrayList<>());
         } else {
             typeName = type.getSimpleName();
         }
-        return new cn.langlang.javainterpreter.ast.Type(null, typeName, new ArrayList<>(), 0, new ArrayList<>());
+        return new cn.langlang.javainterpreter.ast.type.Type(null, typeName, new ArrayList<>(), 0, new ArrayList<>());
     }
     
     private void initializeFields(ScriptClass scriptClass, RuntimeObject instance) {
