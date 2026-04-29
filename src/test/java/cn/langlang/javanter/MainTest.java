@@ -9,22 +9,14 @@ import java.nio.file.*;
 public class MainTest {
     
     @Test
-    public void testMainJava() throws IOException {
+    public void testHelloTestScript() throws IOException {
         JavaInterpreter interpreter = new JavaInterpreter();
-        String source = "public class Main { public static void main(String[] args) { System.out.println(\"Hello from Main\"); } }";
-        assertDoesNotThrow(() -> {
-            interpreter.execute(source);
-        }, "Should be able to execute simple program");
-    }
-    
-    @Test
-    public void testSimpleProgram() {
-        JavaInterpreter interpreter = new JavaInterpreter();
-        String source = "public class Test { public static void main(String[] args) { System.out.println(\"Hello\"); } }";
+        Path scriptPath = Paths.get("scripts/HelloTest.java");
         
+        assertTrue(Files.exists(scriptPath), "HelloTest.java should exist");
         assertDoesNotThrow(() -> {
-            interpreter.execute(source);
-        }, "Should be able to execute simple program");
+            interpreter.executeFile(scriptPath.toString());
+        }, "Should be able to execute HelloTest.java");
     }
     
     @Test
