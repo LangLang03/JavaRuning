@@ -1167,46 +1167,102 @@ public class StandardLibrary {
     
     private Object invokeStaticMethodByReflection(Class<?> clazz, String methodName, List<Object> args) {
         try {
+            java.lang.reflect.Method bestMatch = null;
+            int bestScore = -1;
+            boolean isVarArgs = false;
+            
             for (java.lang.reflect.Method method : clazz.getMethods()) {
                 if (method.getName().equals(methodName) && 
                     java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
-                    if (method.isVarArgs()) {
-                        int fixedParams = method.getParameterCount() - 1;
-                        if (args.size() >= fixedParams) {
-                            method.setAccessible(true);
-                            Object[] argsArray = convertArgsForVarargsMethod(method, args);
-                            return method.invoke(null, argsArray);
+                    
+                    boolean methodIsVarArgs = method.isVarArgs();
+                    int paramCount = method.getParameterCount();
+                    int effectiveParamCount = methodIsVarArgs ? paramCount - 1 : paramCount;
+                    
+                    boolean paramCountMatches = methodIsVarArgs ? 
+                        (args.size() >= effectiveParamCount) : (args.size() == paramCount);
+                    
+                    if (paramCountMatches) {
+                        int score = computeMethodMatchScore(method, args, methodIsVarArgs);
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestMatch = method;
+                            isVarArgs = methodIsVarArgs;
                         }
-                    } else if (method.getParameterCount() == args.size()) {
-                        method.setAccessible(true);
-                        Object[] argsArray = convertArgsForMethod(method, args);
-                        return method.invoke(null, argsArray);
                     }
                 }
+            }
+            
+            if (bestMatch != null) {
+                bestMatch.setAccessible(true);
+                Object[] argsArray = isVarArgs ? 
+                    convertArgsForVarargsMethod(bestMatch, args) : 
+                    convertArgsForMethod(bestMatch, args);
+                return bestMatch.invoke(null, argsArray);
             }
             
             for (java.lang.reflect.Method method : clazz.getDeclaredMethods()) {
                 if (method.getName().equals(methodName) && 
                     java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
-                    if (method.isVarArgs()) {
-                        int fixedParams = method.getParameterCount() - 1;
-                        if (args.size() >= fixedParams) {
-                            method.setAccessible(true);
-                            Object[] argsArray = convertArgsForVarargsMethod(method, args);
-                            return method.invoke(null, argsArray);
+                    
+                    boolean methodIsVarArgs = method.isVarArgs();
+                    int paramCount = method.getParameterCount();
+                    int effectiveParamCount = methodIsVarArgs ? paramCount - 1 : paramCount;
+                    
+                    boolean paramCountMatches = methodIsVarArgs ? 
+                        (args.size() >= effectiveParamCount) : (args.size() == paramCount);
+                    
+                    if (paramCountMatches) {
+                        int score = computeMethodMatchScore(method, args, methodIsVarArgs);
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestMatch = method;
+                            isVarArgs = methodIsVarArgs;
                         }
-                    } else if (method.getParameterCount() == args.size()) {
-                        method.setAccessible(true);
-                        Object[] argsArray = convertArgsForMethod(method, args);
-                        return method.invoke(null, argsArray);
                     }
                 }
+            }
+            
+            if (bestMatch != null) {
+                bestMatch.setAccessible(true);
+                Object[] argsArray = isVarArgs ? 
+                    convertArgsForVarargsMethod(bestMatch, args) : 
+                    convertArgsForMethod(bestMatch, args);
+                return bestMatch.invoke(null, argsArray);
             }
             
             return null;
         } catch (Exception e) {
             throw new RuntimeException("Static method invocation error: " + e.getMessage(), e);
         }
+    }
+    
+    private int computeMethodMatchScore(java.lang.reflect.Method method, List<Object> args, boolean isVarArgs) {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        int score = 0;
+        
+        int fixedParams = isVarArgs ? paramTypes.length - 1 : paramTypes.length;
+        
+        for (int i = 0; i < fixedParams && i < args.size(); i++) {
+            Object arg = args.get(i);
+            Class<?> paramType = paramTypes[i];
+            
+            if (arg == null) {
+                score += 1;
+            } else if (paramType.isInstance(arg)) {
+                score += 10;
+            } else if (paramType.isPrimitive() && arg instanceof Number) {
+                score += 5;
+            } else {
+                score += 1;
+            }
+        }
+        
+        if (isVarArgs && args.size() >= fixedParams) {
+            score += 5;
+        }
+        
+        return score;
     }
     
     private Object[] convertArgsForVarargsMethod(java.lang.reflect.Method method, List<Object> args) {

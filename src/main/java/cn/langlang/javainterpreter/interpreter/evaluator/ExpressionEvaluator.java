@@ -519,6 +519,26 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     public Object visitFieldAccessExpression(FieldAccessExpression node) {
         Object target = node.getTarget().accept(this);
         
+        if (node.getFieldName().equals("class")) {
+            if (target instanceof Class) {
+                return target;
+            }
+            if (target instanceof ScriptClass) {
+                String className = ((ScriptClass) target).getQualifiedName();
+                Class<?> clazz = typeRegistry.getClassLiteral(className);
+                if (clazz != null) {
+                    return clazz;
+                }
+            }
+            if (target == null && node.getTarget() instanceof IdentifierExpression) {
+                String className = ((IdentifierExpression) node.getTarget()).getName();
+                Class<?> clazz = typeRegistry.getClassLiteral(className);
+                if (clazz != null) {
+                    return clazz;
+                }
+            }
+        }
+        
         if (target instanceof ScriptClass) {
             ScriptClass scriptClass = (ScriptClass) target;
             ScriptField field = scriptClass.getField(node.getFieldName());
@@ -1126,6 +1146,7 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     public Object visitClassLiteralExpression(ClassLiteralExpression node) {
         Type type = node.getType();
         String typeName = type.getName();
+        int arrayDims = type.getArrayDimensions();
         
         if (typeName == null) {
             return interpreter.resolveClass(type);
@@ -1133,7 +1154,17 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
         
         Class<?> typeClass = typeRegistry.getClassLiteral(typeName);
         if (typeClass != null) {
+            if (arrayDims > 0) {
+                return getArrayClass(typeClass, arrayDims);
+            }
             return typeClass;
+        }
+        
+        if (arrayDims > 0) {
+            Class<?> componentType = getPrimitiveArrayType(typeName);
+            if (componentType != null) {
+                return getArrayClass(componentType, arrayDims);
+            }
         }
         
         ScriptClass scriptClass = interpreter.resolveClass(type);
@@ -1146,6 +1177,28 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
         } catch (ClassNotFoundException e) {
             return interpreter.resolveClass(type);
         }
+    }
+    
+    private Class<?> getPrimitiveArrayType(String typeName) {
+        switch (typeName) {
+            case "int": return int.class;
+            case "long": return long.class;
+            case "short": return short.class;
+            case "byte": return byte.class;
+            case "char": return char.class;
+            case "boolean": return boolean.class;
+            case "float": return float.class;
+            case "double": return double.class;
+            default: return null;
+        }
+    }
+    
+    private Class<?> getArrayClass(Class<?> componentType, int dimensions) {
+        if (dimensions == 1) {
+            return java.lang.reflect.Array.newInstance(componentType, 0).getClass();
+        }
+        int[] dims = new int[dimensions];
+        return java.lang.reflect.Array.newInstance(componentType, dims).getClass();
     }
     
     @Override
