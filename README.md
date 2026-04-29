@@ -1,5 +1,8 @@
 # Javanter
 
+[![Java](https://img.shields.io/badge/Java-8%2B-blue.svg)](https://www.java.com/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+
 A Java interpreter written in pure Java, supporting Java 8 syntax including Lambda expressions and method references.
 
 ## Features
@@ -54,7 +57,7 @@ Javanter
   └── annotation/     Annotation processing framework
 ```
 
-### Lexer (词法分析器)
+### Lexer
 
 Converts source code strings into token sequences. Supports:
 - Keywords, identifiers, literals
@@ -62,7 +65,7 @@ Converts source code strings into token sequences. Supports:
 - Numeric literals (binary, hex, decimal, scientific notation)
 - Single-line and multi-line comments
 
-### Parser (语法解析器)
+### Parser
 
 Recursive descent parser implementation:
 - `DeclarationParser`: Classes, interfaces, enums, methods, fields
@@ -70,7 +73,7 @@ Recursive descent parser implementation:
 - `StatementParser`: Control flow statements
 - `TypeParser`: Type parsing including generics
 
-### Interpreter (解释执行引擎)
+### Interpreter
 
 Core execution engine coordinating all components:
 - Method invocation and dispatch
@@ -225,4 +228,4 @@ src/main/java/cn/langlang/javainterpreter/
 
 ## License
 
-Apache License 2.0
+Apache License 2.0 - see [LICENSE](LICENSE) for details.
