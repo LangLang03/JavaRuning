@@ -1,6 +1,9 @@
 # Javanter
 
-纯 Java 编写的 Java 解释器，支持 Java 8 语法，包括 Lambda 表达式和方法引用。
+[![Java](https://img.shields.io/badge/Java-8%2B-blue.svg)](https://www.java.com/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+
+纯 Java 编写的 Java 解释器，完整支持 Java 8 语法，包括 Lambda 表达式和方法引用。
 
 ## 功能特性
 
@@ -35,10 +38,77 @@ interpreter.execute("List<Integer> nums = Arrays.asList(1, 2, 3); nums.forEach(x
 | 静态分析 | 支持 | 不支持 |
 | Java 版本 | 8+ | 7 |
 
+## 核心架构
+
+```
+Javanter
+  ├── lexer/          词法分析，Token 生成
+  ├── parser/         递归下降解析器，Pratt 解析器
+  ├── ast/            完整的 AST 节点定义
+  ├── interpreter/     核心执行引擎
+  │     ├── evaluator/   表达式求值
+  │     ├── executor/    语句和声明执行
+  │     └── exception/   控制流异常
+  ├── runtime/
+  │     ├── model/       运行时对象、ScriptClass、ScriptMethod
+  │     ├── environment/  作用域链环境
+  │     └── nativesupport/ Java 标准库桥接
+  ├── analyzer/       静态代码分析
+  └── annotation/     注解处理框架
+```
+
+### Lexer（词法分析器）
+
+将源代码字符串转换为 Token 序列，支持：
+- 关键字、标识符、字面量
+- 字符串转义序列
+- 数值字面量（二进制、十六进制、十进制、科学计数法）
+- 单行和多行注释
+
+### Parser（语法解析器）
+
+递归下降解析器实现：
+- `DeclarationParser`: 类、接口、枚举、方法、字段
+- `ExpressionParser`: Pratt 解析器处理运算符优先级
+- `StatementParser`: 控制流语句
+- `TypeParser`: 类型解析，包括泛型
+
+### Interpreter（解释执行引擎）
+
+核心执行引擎，协调所有组件：
+- 方法调用和分派
+- 类初始化
+- 运行时环境管理
+- Android 运行环境检测和 DEX 文件扫描
+
+### Runtime Model（运行时模型）
+
+- `RuntimeObject`: 所有运行时对象的基类
+- `ScriptClass`: 类的元信息（字段、方法、构造器）
+- `ScriptMethod`: 方法元信息，包含方法体
+- `ScriptField`: 字段元信息
+- `LambdaObject`: 闭包，捕获定义时的环境
+
+### Expression Evaluator（表达式求值器）
+
+访问者模式实现的表达式求值：
+- 二元/一元运算符
+- 方法调用
+- Lambda 表达式
+- 方法引用
+- 字段访问
+
+### Statement Executor（语句执行器）
+
+处理所有语句类型：
+- 控制流: if/while/for/do/switch
+- 异常处理: try/catch/finally
+- 跳转语句: break/continue/return
+
 ## 构建
 
 ```bash
-mvn clean package
+./gradlew build
 ```
 
 ## 运行
@@ -47,24 +117,114 @@ mvn clean package
 java -cp target/javanter-1.0.jar cn.langlang.javainterpreter.Main [选项]
 ```
 
-选项:
+### 选项
+
 - `-main <类名>`: 指定主类名
 - `-lint <文件>`: 仅静态分析
 - `-exec <文件>`: 执行脚本文件
 - `-cp <路径>`: 额外的类路径
 
+### 编程使用
+
+```java
+// 静态分析
+JavaInterpreter interpreter = new JavaInterpreter();
+StaticAnalyzer.AnalysisResult result = interpreter.lint(source, fileName);
+if (result.hasErrors()) {
+    result.printReport();
+}
+
+// 加载并执行
+interpreter.load(source, fileName);
+Object result = interpreter.runMain();
+
+// 直接执行
+Object result = interpreter.execute("System.out.println(\"Hello World\");");
+```
+
+### API 示例
+
+```java
+// 创建解释器
+JavaInterpreter interpreter = new JavaInterpreter();
+
+// 定义一个类
+String code = `
+public class Hello {
+    public String greet(String name) {
+        return "Hello, " + name + "!";
+    }
+
+    public static void main(String[] args) {
+        System.out.println("Javanter works!");
+    }
+}
+`;
+interpreter.load(code, "Hello.java");
+interpreter.runMain();
+
+// Lambda 示例
+interpreter.execute("List<String> names = Arrays.asList(\"Alice\", \"Bob\");");
+interpreter.execute("names.stream().map(x -> x.toUpperCase()).forEach(System.out::println);");
+```
+
 ## 项目结构
 
 ```
 src/main/java/cn/langlang/javainterpreter/
-├── lexer/          # 词法分析
-├── parser/         # 语法解析
-├── ast/            # 抽象语法树
-├── interpreter/    # 执行引擎
-├── runtime/        # 运行时支持
-├── analyzer/       # 静态分析
-└── annotation/      # 注解处理
+├── Main.java              # CLI 入口
+├── api/
+│   └── JavaInterpreter.java   # 公共 API
+├── lexer/
+│   ├── Lexer.java         # Token 扫描器
+│   ├── Token.java         # Token 表示
+│   └── TokenType.java     # Token 类型枚举
+├── parser/
+│   ├── Parser.java        # 主解析器
+│   ├── DeclarationParser.java
+│   ├── ExpressionParser.java
+│   ├── StatementParser.java
+│   ├── TypeParser.java
+│   └── TokenReader.java
+├── ast/
+│   ├── base/              # AST 基类
+│   ├── declaration/       # 声明节点
+│   ├── expression/        # 表达式节点
+│   ├── statement/         # 语句节点
+│   ├── misc/             # 杂项节点
+│   └── type/             # 类型节点
+├── interpreter/
+│   ├── Interpreter.java   # 核心引擎
+│   ├── evaluator/         # 表达式求值
+│   ├── executor/          # 语句/声明执行
+│   └── exception/         # 控制流异常
+├── runtime/
+│   ├── environment/       # 作用域环境
+│   ├── model/            # 运行时对象
+│   └── nativesupport/     # Java 标准库桥接
+├── analyzer/
+│   └── StaticAnalyzer.java
+└── annotation/
+    └── DataAnnotationProcessor.java
 ```
+
+## 支持的 Java 特性
+
+| 类别 | 特性 |
+|------|------|
+| 类型 | 类、接口、枚举、注解、泛型 |
+| 成员 | 字段、方法、构造器、静态初始化块 |
+| 控制流 | if/else、while、for、do/while、switch |
+| 异常 | try/catch/finally、throw、multi-catch |
+| 表达式 | Lambda、方法引用、三元、赋值 |
+| 修饰符 | public、private、protected、static、final、synchronized |
+| 高级 | 匿名类、局部类、静态导入 |
+
+## 已知限制
+
+- 不支持 native 方法声明
+- 部分反射功能受限
+- 不支持显式锁（ReentrantLock 等）
 
 ## 许可证
 
