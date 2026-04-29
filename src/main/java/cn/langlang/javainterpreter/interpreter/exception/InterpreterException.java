@@ -1,11 +1,13 @@
 package cn.langlang.javainterpreter.interpreter.exception;
 
+import cn.langlang.javainterpreter.runtime.model.ScriptClass;
 import java.util.ArrayList;
 import java.util.List;
 
 public class InterpreterException extends RuntimeException {
     private final List<InterpreterStackTraceElement> interpreterStackTrace;
     private Throwable cause;
+    private ScriptClass exceptionClass;
     
     public InterpreterException(String message) {
         super(message);
@@ -16,6 +18,27 @@ public class InterpreterException extends RuntimeException {
         super(message, cause);
         this.interpreterStackTrace = new ArrayList<>();
         this.cause = cause;
+    }
+    
+    public InterpreterException(String message, ScriptClass exceptionClass) {
+        super(message);
+        this.interpreterStackTrace = new ArrayList<>();
+        this.exceptionClass = exceptionClass;
+    }
+    
+    public InterpreterException(String message, Throwable cause, ScriptClass exceptionClass) {
+        super(message, cause);
+        this.interpreterStackTrace = new ArrayList<>();
+        this.cause = cause;
+        this.exceptionClass = exceptionClass;
+    }
+    
+    public ScriptClass getExceptionClass() {
+        return exceptionClass;
+    }
+    
+    public void setExceptionClass(ScriptClass exceptionClass) {
+        this.exceptionClass = exceptionClass;
     }
     
     public void addStackTraceElement(InterpreterStackTraceElement element) {

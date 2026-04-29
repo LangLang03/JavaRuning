@@ -311,6 +311,28 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
             }
             getCurrentEnv().defineVariable("PI", Math.PI);
             getCurrentEnv().defineVariable("E", Math.E);
+        } else if (!isStatic && !isAsterisk) {
+            int lastDot = importName.lastIndexOf('.');
+            if (lastDot > 0) {
+                String simpleName = importName.substring(lastDot + 1);
+                try {
+                    Class<?> clazz = Class.forName(importName);
+                    getCurrentEnv().defineVariable(simpleName, clazz);
+                } catch (ClassNotFoundException e) {
+                }
+            }
+        } else if (!isStatic && isAsterisk) {
+            String[] commonPackages = {
+                "java.lang.", "java.util.", "java.io.", "java.net.",
+                "java.util.regex.", "java.util.stream.", "java.util.function.",
+                "java.text.", "java.lang.reflect.", "java.nio.", "java.nio.file.",
+                "java.math.", "java.time.", "java.util.concurrent."
+            };
+            for (String pkg : commonPackages) {
+                if (importName.equals(pkg.substring(0, pkg.length() - 1)) || 
+                    importName.equals(pkg.substring(0, pkg.length() - 1).replace(".", ""))) {
+                }
+            }
         }
         
         return null;

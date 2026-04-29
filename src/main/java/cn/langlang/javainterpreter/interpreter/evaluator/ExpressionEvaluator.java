@@ -17,14 +17,18 @@ import cn.langlang.javainterpreter.lexer.TokenType;
 import cn.langlang.javainterpreter.runtime.environment.Environment;
 import cn.langlang.javainterpreter.runtime.model.*;
 import cn.langlang.javainterpreter.runtime.nativesupport.StandardLibrary;
+import cn.langlang.javainterpreter.runtime.nativesupport.StaticImportRegistry;
+import cn.langlang.javainterpreter.runtime.nativesupport.TypeRegistry;
 import java.util.*;
 import java.util.function.Function;
 
 public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     private final Interpreter interpreter;
+    private final TypeRegistry typeRegistry;
     
     public ExpressionEvaluator(Interpreter interpreter) {
         this.interpreter = interpreter;
+        this.typeRegistry = new TypeRegistry();
     }
     
     @Override
@@ -367,6 +371,16 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
             target = node.getTarget().accept(this);
         }
         
+        if (target == null && node.getTarget() != null) {
+            if (node.getTarget() instanceof IdentifierExpression) {
+                String varName = ((IdentifierExpression) node.getTarget()).getName();
+                Class<?> javaClass = typeRegistry.getClassLiteral(varName);
+                if (javaClass != null) {
+                    target = javaClass;
+                }
+            }
+        }
+        
         List<Object> args = new ArrayList<>();
         for (Expression arg : node.getArguments()) {
             args.add(arg.accept(this));
@@ -378,6 +392,17 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
                 target = var;
             } else if (var instanceof StandardLibrary.StaticMethodHolder) {
                 return ((StandardLibrary.StaticMethodHolder) var).invoke(args);
+            } else if (var instanceof StaticImportRegistry.StaticMethodHolder) {
+                return ((StaticImportRegistry.StaticMethodHolder) var).invoke(args);
+            }
+        }
+        
+        if (target == null && node.getTarget() == null) {
+            Object staticImport = interpreter.getStdLib().resolveStaticImport(node.getMethodName());
+            if (staticImport instanceof StaticImportRegistry.StaticMethodHolder) {
+                return ((StaticImportRegistry.StaticMethodHolder) staticImport).invoke(args);
+            } else if (staticImport instanceof StandardLibrary.StaticMethodHolder) {
+                return ((StandardLibrary.StaticMethodHolder) staticImport).invoke(args);
             }
         }
 
@@ -414,6 +439,13 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
                 ScriptClass scriptClass = interpreter.getGlobalEnv().getClass(varName);
                 if (scriptClass != null) {
                     target = scriptClass;
+                }
+            }
+            
+            if (target == null) {
+                Class<?> javaClass = typeRegistry.getClassLiteral(varName);
+                if (javaClass != null) {
+                    target = javaClass;
                 }
             }
         }
@@ -991,37 +1023,10 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
         if (value == null) return null;
         
         String typeName = targetType.getName();
+        Object result = typeRegistry.castValue(value, typeName);
         
-        switch (typeName) {
-            case "int":
-                if (value instanceof Number) return ((Number) value).intValue();
-                if (value instanceof Character) return (int) (Character) value;
-                break;
-            case "long":
-                if (value instanceof Number) return ((Number) value).longValue();
-                if (value instanceof Character) return (long) (Character) value;
-                break;
-            case "short":
-                if (value instanceof Number) return ((Number) value).shortValue();
-                if (value instanceof Character) return (short) ((Character) value).charValue();
-                break;
-            case "byte":
-                if (value instanceof Number) return ((Number) value).byteValue();
-                if (value instanceof Character) return (byte) ((Character) value).charValue();
-                break;
-            case "char":
-                if (value instanceof Number) return (char) ((Number) value).intValue();
-                if (value instanceof Character) return value;
-                break;
-            case "float":
-                if (value instanceof Number) return ((Number) value).floatValue();
-                break;
-            case "double":
-                if (value instanceof Number) return ((Number) value).doubleValue();
-                break;
-            case "boolean":
-                if (value instanceof Boolean) return value;
-                break;
+        if (result != value || value == null) {
+            return result;
         }
         
         return value;
@@ -1041,50 +1046,15 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
             int arrayDims = checkType.getArrayDimensions();
             
             if (arrayDims > 0) {
-                switch (typeName) {
-                    case "byte": return value instanceof byte[];
-                    case "short": return value instanceof short[];
-                    case "int": return value instanceof int[];
-                    case "long": return value instanceof long[];
-                    case "char": return value instanceof char[];
-                    case "float": return value instanceof float[];
-                    case "double": return value instanceof double[];
-                    case "boolean": return value instanceof boolean[];
-                    default: return value.getClass().isArray();
-                }
+                return checkArrayInstance(value, typeName);
             }
-            switch (typeName) {
-                case "int": return value instanceof Integer;
-                case "long": return value instanceof Long;
-                case "short": return value instanceof Short;
-                case "byte": return value instanceof Byte;
-                case "char": return value instanceof Character;
-                case "boolean": return value instanceof Boolean;
-                case "float": return value instanceof Float;
-                case "double": return value instanceof Double;
-                case "String":
-                case "java.lang.String":
-                    return value instanceof String;
-                case "Integer":
-                case "java.lang.Integer":
-                    return value instanceof Integer;
-                case "Long":
-                case "java.lang.Long":
-                    return value instanceof Long;
-                case "Double":
-                case "java.lang.Double":
-                    return value instanceof Double;
-                case "Float":
-                case "java.lang.Float":
-                    return value instanceof Float;
-                case "Boolean":
-                case "java.lang.Boolean":
-                    return value instanceof Boolean;
-                case "Object":
-                case "java.lang.Object":
-                    return true;
-                default: return false;
+            
+            Class<?> typeClass = typeRegistry.getClassLiteral(typeName);
+            if (typeClass != null) {
+                return typeClass.isInstance(value);
             }
+            
+            return typeRegistry.isInstance(value, typeName);
         }
         
         if (value instanceof RuntimeObject) {
@@ -1093,6 +1063,20 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
         }
         
         return false;
+    }
+    
+    private boolean checkArrayInstance(Object value, String typeName) {
+        switch (typeName) {
+            case "byte": return value instanceof byte[];
+            case "short": return value instanceof short[];
+            case "int": return value instanceof int[];
+            case "long": return value instanceof long[];
+            case "char": return value instanceof char[];
+            case "float": return value instanceof float[];
+            case "double": return value instanceof double[];
+            case "boolean": return value instanceof boolean[];
+            default: return value.getClass().isArray();
+        }
     }
     
     @Override
@@ -1127,55 +1111,19 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
             return interpreter.resolveClass(type);
         }
         
-        if (typeName.equals("int")) return int.class;
-        if (typeName.equals("long")) return long.class;
-        if (typeName.equals("short")) return short.class;
-        if (typeName.equals("byte")) return byte.class;
-        if (typeName.equals("char")) return char.class;
-        if (typeName.equals("boolean")) return boolean.class;
-        if (typeName.equals("float")) return float.class;
-        if (typeName.equals("double")) return double.class;
-        if (typeName.equals("void")) return void.class;
+        Class<?> typeClass = typeRegistry.getClassLiteral(typeName);
+        if (typeClass != null) {
+            return typeClass;
+        }
+        
+        ScriptClass scriptClass = interpreter.resolveClass(type);
+        if (scriptClass != null) {
+            return scriptClass;
+        }
         
         try {
-            if (typeName.equals("String") || typeName.equals("java.lang.String")) return String.class;
-            if (typeName.equals("Object") || typeName.equals("java.lang.Object")) return Object.class;
-            if (typeName.equals("Class") || typeName.equals("java.lang.Class")) return Class.class;
-            if (typeName.equals("Integer") || typeName.equals("java.lang.Integer")) return Integer.class;
-            if (typeName.equals("Long") || typeName.equals("java.lang.Long")) return Long.class;
-            if (typeName.equals("Double") || typeName.equals("java.lang.Double")) return Double.class;
-            if (typeName.equals("Float") || typeName.equals("java.lang.Float")) return Float.class;
-            if (typeName.equals("Boolean") || typeName.equals("java.lang.Boolean")) return Boolean.class;
-            if (typeName.equals("Character") || typeName.equals("java.lang.Character")) return Character.class;
-            if (typeName.equals("Number") || typeName.equals("java.lang.Number")) return Number.class;
-            if (typeName.equals("Exception") || typeName.equals("java.lang.Exception")) return Exception.class;
-            if (typeName.equals("RuntimeException") || typeName.equals("java.lang.RuntimeException")) return RuntimeException.class;
-            if (typeName.equals("Throwable") || typeName.equals("java.lang.Throwable")) return Throwable.class;
-            if (typeName.equals("StringBuilder") || typeName.equals("java.lang.StringBuilder")) return StringBuilder.class;
-            if (typeName.equals("ArrayList") || typeName.equals("java.util.ArrayList")) return java.util.ArrayList.class;
-            if (typeName.equals("List") || typeName.equals("java.util.List")) return java.util.List.class;
-            if (typeName.equals("Map") || typeName.equals("java.util.Map")) return java.util.Map.class;
-            if (typeName.equals("Set") || typeName.equals("java.util.Set")) return java.util.Set.class;
-            if (typeName.equals("Collection") || typeName.equals("java.util.Collection")) return java.util.Collection.class;
-            if (typeName.equals("Iterable") || typeName.equals("java.lang.Iterable")) return Iterable.class;
-            if (typeName.equals("Comparable") || typeName.equals("java.lang.Comparable")) return Comparable.class;
-            if (typeName.equals("Runnable") || typeName.equals("java.lang.Runnable")) return Runnable.class;
-            if (typeName.equals("Function") || typeName.equals("java.util.function.Function")) return java.util.function.Function.class;
-            if (typeName.equals("Consumer") || typeName.equals("java.util.function.Consumer")) return java.util.function.Consumer.class;
-            if (typeName.equals("Supplier") || typeName.equals("java.util.function.Supplier")) return java.util.function.Supplier.class;
-            if (typeName.equals("Predicate") || typeName.equals("java.util.function.Predicate")) return java.util.function.Predicate.class;
-            
-            ScriptClass scriptClass = interpreter.resolveClass(type);
-            if (scriptClass != null) {
-                return scriptClass;
-            }
-            
-            try {
-                return Class.forName(typeName);
-            } catch (ClassNotFoundException e) {
-                return interpreter.resolveClass(type);
-            }
-        } catch (Exception e) {
+            return Class.forName(typeName.contains(".") ? typeName : "java.lang." + typeName);
+        } catch (ClassNotFoundException e) {
             return interpreter.resolveClass(type);
         }
     }

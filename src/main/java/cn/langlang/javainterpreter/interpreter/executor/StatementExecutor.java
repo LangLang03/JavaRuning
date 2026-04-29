@@ -358,40 +358,88 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
     }
     
     private boolean matchesException(RuntimeException e, List<Type> exceptionTypes) {
-        Throwable actualException = e.getCause() != null ? e.getCause() : e;
+        Throwable actualException = e;
+        if (e instanceof InterpreterException) {
+            actualException = e.getCause() != null ? e.getCause() : e;
+        }
         
         for (Type type : exceptionTypes) {
             String typeName = type.getName();
-            if (typeName.equals("Exception") || typeName.equals("RuntimeException") ||
-                typeName.equals("Throwable")) {
-                return true;
+            
+            ScriptClass catchClass = interpreter.getGlobalEnv().getClass(typeName);
+            if (catchClass == null) {
+                catchClass = interpreter.getStdLib().getStandardClass(typeName);
             }
             
-            if (actualException.getClass().getSimpleName().equals(typeName)) {
-                return true;
+            if (actualException instanceof RuntimeException) {
+                RuntimeException runtimeEx = (RuntimeException) actualException;
+                if (runtimeEx.getClass().getSimpleName().equals(typeName) ||
+                    runtimeEx.getClass().getName().equals(typeName)) {
+                    return true;
+                }
+                
+                if (isExceptionTypeMatch(runtimeEx.getClass(), typeName)) {
+                    return true;
+                }
             }
             
-            if (actualException.getClass().getName().contains(typeName)) {
-                return true;
+            if (actualException instanceof InterpreterException) {
+                InterpreterException interpEx = (InterpreterException) actualException;
+                if (interpEx.getExceptionClass() != null && catchClass != null) {
+                    if (catchClass.isAssignableFrom(interpEx.getExceptionClass())) {
+                        return true;
+                    }
+                }
             }
             
-            if (typeName.equals("IOException") && actualException instanceof java.io.IOException) {
-                return true;
-            }
-            
-            if (typeName.equals("NullPointerException") && actualException instanceof NullPointerException) {
-                return true;
-            }
-            
-            if (typeName.equals("ArithmeticException") && actualException instanceof ArithmeticException) {
-                return true;
-            }
-            
-            if (typeName.equals("IllegalArgumentException") && actualException instanceof IllegalArgumentException) {
-                return true;
+            if (actualException instanceof Throwable) {
+                if (isExceptionTypeMatch(actualException.getClass(), typeName)) {
+                    return true;
+                }
             }
         }
         return false;
+    }
+    
+    private boolean isExceptionTypeMatch(Class<?> exceptionClass, String typeName) {
+        if (typeName.equals("Exception") || typeName.equals("java.lang.Exception")) {
+            return Exception.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("RuntimeException") || typeName.equals("java.lang.RuntimeException")) {
+            return RuntimeException.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("Throwable") || typeName.equals("java.lang.Throwable")) {
+            return Throwable.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("IOException") || typeName.equals("java.io.IOException")) {
+            return java.io.IOException.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("NullPointerException") || typeName.equals("java.lang.NullPointerException")) {
+            return NullPointerException.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("ArithmeticException") || typeName.equals("java.lang.ArithmeticException")) {
+            return ArithmeticException.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("IllegalArgumentException") || typeName.equals("java.lang.IllegalArgumentException")) {
+            return IllegalArgumentException.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("IndexOutOfBoundsException") || typeName.equals("java.lang.IndexOutOfBoundsException")) {
+            return IndexOutOfBoundsException.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("ClassCastException") || typeName.equals("java.lang.ClassCastException")) {
+            return ClassCastException.class.isAssignableFrom(exceptionClass);
+        }
+        if (typeName.equals("NumberFormatException") || typeName.equals("java.lang.NumberFormatException")) {
+            return NumberFormatException.class.isAssignableFrom(exceptionClass);
+        }
+        
+        try {
+            Class<?> catchType = Class.forName(typeName.contains(".") ? typeName : "java.lang." + typeName);
+            return catchType.isAssignableFrom(exceptionClass);
+        } catch (ClassNotFoundException ex) {
+            return exceptionClass.getSimpleName().equals(typeName) ||
+                   exceptionClass.getName().contains(typeName);
+        }
     }
     
     @Override

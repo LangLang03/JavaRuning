@@ -18,10 +18,25 @@ import java.lang.reflect.*;
 public class StandardLibrary {
     private final Interpreter interpreter;
     private final Map<String, ScriptClass> standardClasses;
+    private final NativeMethodRegistry methodRegistry;
+    private final ConstructorRegistry constructorRegistry;
+    private final StaticImportRegistry staticImportRegistry;
     
     public StandardLibrary(Interpreter interpreter) {
         this.interpreter = interpreter;
         this.standardClasses = new HashMap<>();
+        this.methodRegistry = new NativeMethodRegistry();
+        this.constructorRegistry = new ConstructorRegistry();
+        this.staticImportRegistry = new StaticImportRegistry();
+        
+        initializeRegistries();
+    }
+    
+    private void initializeRegistries() {
+        staticImportRegistry.registerMathFunctions();
+        staticImportRegistry.registerSystemMembers();
+        staticImportRegistry.registerClass("Math", Math.class);
+        staticImportRegistry.registerClass("System", System.class);
     }
     
     public void initializeStandardClasses(Environment env) {
@@ -82,9 +97,394 @@ public class StandardLibrary {
     private void initializeIO(Environment env) {
     }
     
+    private void registerStringMethods() {
+        Map<String, NativeMethodRegistry.MethodHandler> stringMethods = new HashMap<>();
+        
+        stringMethods.put("length", (target, name, args) -> ((String) target).length());
+        stringMethods.put("charAt", (target, name, args) -> ((String) target).charAt((Integer) args.get(0)));
+        stringMethods.put("substring", (target, name, args) -> {
+            String str = (String) target;
+            if (args.size() == 1) return str.substring((Integer) args.get(0));
+            return str.substring((Integer) args.get(0), (Integer) args.get(1));
+        });
+        stringMethods.put("indexOf", (target, name, args) -> ((String) target).indexOf((String) args.get(0)));
+        stringMethods.put("contains", (target, name, args) -> ((String) target).contains((String) args.get(0)));
+        stringMethods.put("startsWith", (target, name, args) -> ((String) target).startsWith((String) args.get(0)));
+        stringMethods.put("endsWith", (target, name, args) -> ((String) target).endsWith((String) args.get(0)));
+        stringMethods.put("trim", (target, name, args) -> ((String) target).trim());
+        stringMethods.put("toLowerCase", (target, name, args) -> ((String) target).toLowerCase());
+        stringMethods.put("toUpperCase", (target, name, args) -> ((String) target).toUpperCase());
+        stringMethods.put("replace", (target, name, args) -> ((String) target).replace((CharSequence) args.get(0), (CharSequence) args.get(1)));
+        stringMethods.put("split", (target, name, args) -> ((String) target).split((String) args.get(0)));
+        stringMethods.put("equals", (target, name, args) -> ((String) target).equals(args.get(0)));
+        stringMethods.put("equalsIgnoreCase", (target, name, args) -> ((String) target).equalsIgnoreCase((String) args.get(0)));
+        stringMethods.put("compareTo", (target, name, args) -> ((String) target).compareTo((String) args.get(0)));
+        stringMethods.put("compareToIgnoreCase", (target, name, args) -> ((String) target).compareToIgnoreCase((String) args.get(0)));
+        stringMethods.put("isEmpty", (target, name, args) -> ((String) target).isEmpty());
+        stringMethods.put("concat", (target, name, args) -> ((String) target).concat((String) args.get(0)));
+        stringMethods.put("getBytes", (target, name, args) -> ((String) target).getBytes());
+        stringMethods.put("toCharArray", (target, name, args) -> ((String) target).toCharArray());
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : stringMethods.entrySet()) {
+            methodRegistry.registerMethod(String.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerListMethods() {
+        Map<String, NativeMethodRegistry.MethodHandler> listMethods = new HashMap<>();
+        
+        listMethods.put("get", (target, name, args) -> ((List<?>) target).get((Integer) args.get(0)));
+        listMethods.put("add", (target, name, args) -> { ((List) target).add(args.get(0)); return true; });
+        listMethods.put("remove", (target, name, args) -> {
+            List<?> list = (List<?>) target;
+            if (args.get(0) instanceof Integer) {
+                return list.remove((int) args.get(0));
+            }
+            return ((List) target).remove(args.get(0));
+        });
+        listMethods.put("size", (target, name, args) -> ((List<?>) target).size());
+        listMethods.put("isEmpty", (target, name, args) -> ((List<?>) target).isEmpty());
+        listMethods.put("contains", (target, name, args) -> ((List<?>) target).contains(args.get(0)));
+        listMethods.put("clear", (target, name, args) -> { ((List) target).clear(); return null; });
+        listMethods.put("forEach", (target, name, args) -> {
+            Object consumer = args.get(0);
+            if (consumer instanceof LambdaObject) {
+                LambdaObject lambda = (LambdaObject) consumer;
+                for (Object elem : (List<?>) target) {
+                    invokeLambda(lambda, Arrays.asList(elem));
+                }
+            }
+            return null;
+        });
+        listMethods.put("stream", (target, name, args) -> ((List<?>) target).stream());
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : listMethods.entrySet()) {
+            methodRegistry.registerMethod(List.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerSetMethods() {
+        Map<String, NativeMethodRegistry.MethodHandler> setMethods = new HashMap<>();
+        
+        setMethods.put("add", (target, name, args) -> ((Set) target).add(args.get(0)));
+        setMethods.put("contains", (target, name, args) -> ((Set<?>) target).contains(args.get(0)));
+        setMethods.put("remove", (target, name, args) -> ((Set) target).remove(args.get(0)));
+        setMethods.put("size", (target, name, args) -> ((Set<?>) target).size());
+        setMethods.put("isEmpty", (target, name, args) -> ((Set<?>) target).isEmpty());
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : setMethods.entrySet()) {
+            methodRegistry.registerMethod(Set.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerMapMethods() {
+        Map<String, NativeMethodRegistry.MethodHandler> mapMethods = new HashMap<>();
+        
+        mapMethods.put("get", (target, name, args) -> ((Map<?, ?>) target).get(args.get(0)));
+        mapMethods.put("put", (target, name, args) -> ((Map) target).put(args.get(0), args.get(1)));
+        mapMethods.put("containsKey", (target, name, args) -> ((Map<?, ?>) target).containsKey(args.get(0)));
+        mapMethods.put("keySet", (target, name, args) -> ((Map<?, ?>) target).keySet());
+        mapMethods.put("values", (target, name, args) -> ((Map<?, ?>) target).values());
+        mapMethods.put("size", (target, name, args) -> ((Map<?, ?>) target).size());
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : mapMethods.entrySet()) {
+            methodRegistry.registerMethod(Map.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerStreamMethods() {
+        Map<String, NativeMethodRegistry.MethodHandler> streamMethods = new HashMap<>();
+        
+        streamMethods.put("forEach", (target, name, args) -> {
+            Object consumer = args.get(0);
+            if (consumer instanceof LambdaObject) {
+                LambdaObject lambda = (LambdaObject) consumer;
+                ((Stream<?>) target).forEach(elem -> invokeLambda(lambda, Arrays.asList(elem)));
+            }
+            return null;
+        });
+        streamMethods.put("map", (target, name, args) -> {
+            Object mapper = args.get(0);
+            if (mapper instanceof LambdaObject) {
+                LambdaObject lambda = (LambdaObject) mapper;
+                return ((Stream<?>) target).map(elem -> invokeLambda(lambda, Arrays.asList(elem)));
+            }
+            return null;
+        });
+        streamMethods.put("filter", (target, name, args) -> {
+            Object predicate = args.get(0);
+            if (predicate instanceof LambdaObject) {
+                LambdaObject lambda = (LambdaObject) predicate;
+                return ((Stream<?>) target).filter(elem -> (Boolean) invokeLambda(lambda, Arrays.asList(elem)));
+            }
+            return null;
+        });
+        streamMethods.put("collect", (target, name, args) -> {
+            Object collector = args.get(0);
+            if (collector instanceof Map) {
+                Map<?, ?> map = (Map<?, ?>) collector;
+                if (map.containsKey("type")) {
+                    String type = (String) map.get("type");
+                    if (type.equals("toList")) {
+                        return ((Stream<?>) target).collect(Collectors.toList());
+                    } else if (type.equals("toSet")) {
+                        return ((Stream<?>) target).collect(Collectors.toSet());
+                    }
+                }
+            }
+            return null;
+        });
+        streamMethods.put("count", (target, name, args) -> ((Stream<?>) target).count());
+        streamMethods.put("findFirst", (target, name, args) -> ((Stream<?>) target).findFirst());
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : streamMethods.entrySet()) {
+            methodRegistry.registerMethod(Stream.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerOptionalMethods() {
+        Map<String, NativeMethodRegistry.MethodHandler> optionalMethods = new HashMap<>();
+        
+        optionalMethods.put("isPresent", (target, name, args) -> ((Optional<?>) target).isPresent());
+        optionalMethods.put("get", (target, name, args) -> ((Optional<?>) target).get());
+        optionalMethods.put("orElse", (target, name, args) -> {
+            @SuppressWarnings("unchecked")
+            Optional<Object> opt = (Optional<Object>) target;
+            return opt.orElse(args.get(0));
+        });
+        optionalMethods.put("ifPresent", (target, name, args) -> {
+            Object consumer = args.get(0);
+            if (consumer instanceof LambdaObject) {
+                LambdaObject lambda = (LambdaObject) consumer;
+                ((Optional<?>) target).ifPresent(elem -> invokeLambda(lambda, Arrays.asList(elem)));
+            }
+            return null;
+        });
+        optionalMethods.put("map", (target, name, args) -> {
+            Object mapper = args.get(0);
+            if (mapper instanceof LambdaObject) {
+                LambdaObject lambda = (LambdaObject) mapper;
+                return ((Optional<?>) target).map(elem -> invokeLambda(lambda, Arrays.asList(elem)));
+            }
+            return null;
+        });
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : optionalMethods.entrySet()) {
+            methodRegistry.registerMethod(Optional.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerPrimitiveMethods() {
+        Map<String, NativeMethodRegistry.MethodHandler> integerMethods = new HashMap<>();
+        integerMethods.put("intValue", (target, name, args) -> ((Integer) target).intValue());
+        integerMethods.put("longValue", (target, name, args) -> ((Integer) target).longValue());
+        integerMethods.put("doubleValue", (target, name, args) -> ((Integer) target).doubleValue());
+        integerMethods.put("floatValue", (target, name, args) -> ((Integer) target).floatValue());
+        integerMethods.put("shortValue", (target, name, args) -> ((Integer) target).shortValue());
+        integerMethods.put("byteValue", (target, name, args) -> ((Integer) target).byteValue());
+        integerMethods.put("compareTo", (target, name, args) -> ((Integer) target).compareTo((Integer) args.get(0)));
+        integerMethods.put("toString", (target, name, args) -> ((Integer) target).toString());
+        integerMethods.put("equals", (target, name, args) -> ((Integer) target).equals(args.get(0)));
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : integerMethods.entrySet()) {
+            methodRegistry.registerMethod(Integer.class, entry.getKey(), entry.getValue());
+        }
+        
+        Map<String, NativeMethodRegistry.MethodHandler> longMethods = new HashMap<>();
+        longMethods.put("intValue", (target, name, args) -> ((Long) target).intValue());
+        longMethods.put("longValue", (target, name, args) -> ((Long) target).longValue());
+        longMethods.put("doubleValue", (target, name, args) -> ((Long) target).doubleValue());
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : longMethods.entrySet()) {
+            methodRegistry.registerMethod(Long.class, entry.getKey(), entry.getValue());
+        }
+        
+        Map<String, NativeMethodRegistry.MethodHandler> doubleMethods = new HashMap<>();
+        doubleMethods.put("intValue", (target, name, args) -> ((Double) target).intValue());
+        doubleMethods.put("longValue", (target, name, args) -> ((Double) target).longValue());
+        doubleMethods.put("doubleValue", (target, name, args) -> ((Double) target).doubleValue());
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : doubleMethods.entrySet()) {
+            methodRegistry.registerMethod(Double.class, entry.getKey(), entry.getValue());
+        }
+        
+        Map<String, NativeMethodRegistry.MethodHandler> floatMethods = new HashMap<>();
+        floatMethods.put("intValue", (target, name, args) -> ((Float) target).intValue());
+        floatMethods.put("floatValue", (target, name, args) -> ((Float) target).floatValue());
+        floatMethods.put("doubleValue", (target, name, args) -> ((Float) target).doubleValue());
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : floatMethods.entrySet()) {
+            methodRegistry.registerMethod(Float.class, entry.getKey(), entry.getValue());
+        }
+        
+        Map<String, NativeMethodRegistry.MethodHandler> charMethods = new HashMap<>();
+        charMethods.put("charValue", (target, name, args) -> ((Character) target).charValue());
+        charMethods.put("compareTo", (target, name, args) -> ((Character) target).compareTo((Character) args.get(0)));
+        charMethods.put("equals", (target, name, args) -> ((Character) target).equals(args.get(0)));
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : charMethods.entrySet()) {
+            methodRegistry.registerMethod(Character.class, entry.getKey(), entry.getValue());
+        }
+        
+        Map<String, NativeMethodRegistry.MethodHandler> boolMethods = new HashMap<>();
+        boolMethods.put("booleanValue", (target, name, args) -> ((Boolean) target).booleanValue());
+        boolMethods.put("compareTo", (target, name, args) -> ((Boolean) target).compareTo((Boolean) args.get(0)));
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : boolMethods.entrySet()) {
+            methodRegistry.registerMethod(Boolean.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerThrowableMethods() {
+        Map<String, NativeMethodRegistry.MethodHandler> throwableMethods = new HashMap<>();
+        
+        throwableMethods.put("getMessage", (target, name, args) -> ((Throwable) target).getMessage());
+        throwableMethods.put("getLocalizedMessage", (target, name, args) -> ((Throwable) target).getLocalizedMessage());
+        throwableMethods.put("getCause", (target, name, args) -> ((Throwable) target).getCause());
+        throwableMethods.put("printStackTrace", (target, name, args) -> { ((Throwable) target).printStackTrace(); return null; });
+        throwableMethods.put("toString", (target, name, args) -> ((Throwable) target).toString());
+        throwableMethods.put("fillInStackTrace", (target, name, args) -> ((Throwable) target).fillInStackTrace());
+        throwableMethods.put("getStackTrace", (target, name, args) -> ((Throwable) target).getStackTrace());
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : throwableMethods.entrySet()) {
+            methodRegistry.registerMethod(Throwable.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerIOClasses() {
+        Map<String, NativeMethodRegistry.MethodHandler> printStreamMethods = new HashMap<>();
+        
+        printStreamMethods.put("println", (target, name, args) -> {
+            java.io.PrintStream ps = (java.io.PrintStream) target;
+            if (args.isEmpty()) {
+                ps.println();
+            } else {
+                ps.println(args.get(0));
+            }
+            return null;
+        });
+        printStreamMethods.put("print", (target, name, args) -> {
+            ((java.io.PrintStream) target).print(args.get(0));
+            return null;
+        });
+        printStreamMethods.put("printf", (target, name, args) -> {
+            Object[] formatArgs = args.subList(1, args.size()).toArray();
+            return ((java.io.PrintStream) target).printf((String) args.get(0), formatArgs);
+        });
+        printStreamMethods.put("flush", (target, name, args) -> {
+            ((java.io.PrintStream) target).flush();
+            return null;
+        });
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : printStreamMethods.entrySet()) {
+            methodRegistry.registerMethod(java.io.PrintStream.class, entry.getKey(), entry.getValue());
+        }
+        
+        Map<String, NativeMethodRegistry.MethodHandler> inputStreamMethods = new HashMap<>();
+        inputStreamMethods.put("read", (target, name, args) -> {
+            java.io.InputStream is = (java.io.InputStream) target;
+            try {
+                if (args.isEmpty()) {
+                    return is.read();
+                } else if (args.size() == 1 && args.get(0) instanceof byte[]) {
+                    return is.read((byte[]) args.get(0));
+                } else if (args.size() == 3 && args.get(0) instanceof byte[]) {
+                    return is.read((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2));
+                }
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
+        });
+        inputStreamMethods.put("available", (target, name, args) -> {
+            try { return ((java.io.InputStream) target).available(); } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        inputStreamMethods.put("close", (target, name, args) -> {
+            try { ((java.io.InputStream) target).close(); return null; } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        inputStreamMethods.put("skip", (target, name, args) -> {
+            try { return ((java.io.InputStream) target).skip((Long) args.get(0)); } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : inputStreamMethods.entrySet()) {
+            methodRegistry.registerMethod(java.io.InputStream.class, entry.getKey(), entry.getValue());
+        }
+        
+        Map<String, NativeMethodRegistry.MethodHandler> outputStreamMethods = new HashMap<>();
+        outputStreamMethods.put("write", (target, name, args) -> {
+            java.io.OutputStream os = (java.io.OutputStream) target;
+            try {
+                if (args.size() == 1) {
+                    Object arg = args.get(0);
+                    if (arg instanceof Integer) {
+                        os.write((Integer) arg);
+                    } else if (arg instanceof byte[]) {
+                        os.write((byte[]) arg);
+                    }
+                } else if (args.size() == 3 && args.get(0) instanceof byte[]) {
+                    os.write((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2));
+                }
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
+        });
+        outputStreamMethods.put("flush", (target, name, args) -> {
+            try { ((java.io.OutputStream) target).flush(); return null; } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        outputStreamMethods.put("close", (target, name, args) -> {
+            try { ((java.io.OutputStream) target).close(); return null; } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : outputStreamMethods.entrySet()) {
+            methodRegistry.registerMethod(java.io.OutputStream.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerNetworkClasses() {
+        Map<String, NativeMethodRegistry.MethodHandler> socketMethods = new HashMap<>();
+        
+        socketMethods.put("getInputStream", (target, name, args) -> {
+            try { return ((java.net.Socket) target).getInputStream(); } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        socketMethods.put("getOutputStream", (target, name, args) -> {
+            try { return ((java.net.Socket) target).getOutputStream(); } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        socketMethods.put("close", (target, name, args) -> {
+            try { ((java.net.Socket) target).close(); return null; } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        socketMethods.put("setSoTimeout", (target, name, args) -> {
+            try { ((java.net.Socket) target).setSoTimeout((Integer) args.get(0)); return null; } catch (java.net.SocketException e) { throw new RuntimeException(e); }
+        });
+        socketMethods.put("setTcpNoDelay", (target, name, args) -> {
+            try { ((java.net.Socket) target).setTcpNoDelay((Boolean) args.get(0)); return null; } catch (java.net.SocketException e) { throw new RuntimeException(e); }
+        });
+        socketMethods.put("isClosed", (target, name, args) -> ((java.net.Socket) target).isClosed());
+        socketMethods.put("isConnected", (target, name, args) -> ((java.net.Socket) target).isConnected());
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : socketMethods.entrySet()) {
+            methodRegistry.registerMethod(java.net.Socket.class, entry.getKey(), entry.getValue());
+        }
+        
+        Map<String, NativeMethodRegistry.MethodHandler> serverSocketMethods = new HashMap<>();
+        
+        serverSocketMethods.put("accept", (target, name, args) -> {
+            try { return ((java.net.ServerSocket) target).accept(); } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        serverSocketMethods.put("close", (target, name, args) -> {
+            try { ((java.net.ServerSocket) target).close(); return null; } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        });
+        serverSocketMethods.put("isClosed", (target, name, args) -> ((java.net.ServerSocket) target).isClosed());
+        
+        for (Map.Entry<String, NativeMethodRegistry.MethodHandler> entry : serverSocketMethods.entrySet()) {
+            methodRegistry.registerMethod(java.net.ServerSocket.class, entry.getKey(), entry.getValue());
+        }
+    }
+    
+    private void registerConstructors() {
+    }
+    
     public Object invokeMethod(Object target, String methodName, List<Object> args) {
         if (target instanceof StaticMethodHolder) {
             return ((StaticMethodHolder) target).invoke(args);
+        }
+        
+        if (target instanceof StaticImportRegistry.StaticMethodHolder) {
+            return ((StaticImportRegistry.StaticMethodHolder) target).invoke(args);
         }
         
         if (target instanceof SystemHolder) {
@@ -119,6 +519,12 @@ public class StandardLibrary {
             return invokeConstructorMethod((Constructor<?>) target, args);
         }
         
+        Class<?> targetClass = target.getClass();
+        NativeMethodRegistry.MethodHandler handler = findMethodHandler(targetClass, methodName);
+        if (handler != null) {
+            return handler.invoke(target, methodName, args);
+        }
+        
         if (target instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) target;
             Object methodValue = map.get(methodName);
@@ -130,394 +536,6 @@ public class StandardLibrary {
                 } else if (methodValue instanceof java.util.function.Supplier) {
                     return ((java.util.function.Supplier) methodValue).get();
                 }
-            }
-            if (methodName.equals("get")) {
-                return map.get(args.get(0));
-            } else if (methodName.equals("put")) {
-                return ((Map) map).put(args.get(0), args.get(1));
-            } else if (methodName.equals("containsKey")) {
-                return map.containsKey(args.get(0));
-            } else if (methodName.equals("keySet")) {
-                return map.keySet();
-            } else if (methodName.equals("values")) {
-                return map.values();
-            } else if (methodName.equals("size")) {
-                return map.size();
-            }
-        }
-        
-        if (target instanceof List) {
-            List<?> list = (List<?>) target;
-            if (methodName.equals("get")) {
-                return list.get((Integer) args.get(0));
-            } else if (methodName.equals("add")) {
-                ((List) target).add(args.get(0));
-                return true;
-            } else if (methodName.equals("remove")) {
-                if (args.get(0) instanceof Integer) {
-                    return list.remove((int) args.get(0));
-                }
-                return ((List) target).remove(args.get(0));
-            } else if (methodName.equals("size")) {
-                return list.size();
-            } else if (methodName.equals("isEmpty")) {
-                return list.isEmpty();
-            } else if (methodName.equals("contains")) {
-                return list.contains(args.get(0));
-            } else if (methodName.equals("clear")) {
-                ((List) target).clear();
-                return null;
-            } else if (methodName.equals("forEach")) {
-                Object consumer = args.get(0);
-                if (consumer instanceof LambdaObject) {
-                    LambdaObject lambda = (LambdaObject) consumer;
-                    for (Object elem : list) {
-                        invokeLambda(lambda, Arrays.asList(elem));
-                    }
-                }
-                return null;
-            } else if (methodName.equals("stream")) {
-                return ((List<?>) target).stream();
-            }
-        }
-        
-        if (target instanceof Set) {
-            Set<?> set = (Set<?>) target;
-            if (methodName.equals("add")) {
-                return ((Set) target).add(args.get(0));
-            } else if (methodName.equals("contains")) {
-                return set.contains(args.get(0));
-            } else if (methodName.equals("remove")) {
-                return ((Set) target).remove(args.get(0));
-            } else if (methodName.equals("size")) {
-                return set.size();
-            } else if (methodName.equals("isEmpty")) {
-                return set.isEmpty();
-            }
-        }
-        
-        if (target instanceof Stream) {
-            Stream<?> stream = (Stream<?>) target;
-            if (methodName.equals("forEach")) {
-                Object consumer = args.get(0);
-                if (consumer instanceof LambdaObject) {
-                    LambdaObject lambda = (LambdaObject) consumer;
-                    stream.forEach(elem -> invokeLambda(lambda, Arrays.asList(elem)));
-                }
-                return null;
-            } else if (methodName.equals("map")) {
-                Object mapper = args.get(0);
-                if (mapper instanceof LambdaObject) {
-                    LambdaObject lambda = (LambdaObject) mapper;
-                    return stream.map(elem -> invokeLambda(lambda, Arrays.asList(elem)));
-                }
-            } else if (methodName.equals("filter")) {
-                Object predicate = args.get(0);
-                if (predicate instanceof LambdaObject) {
-                    LambdaObject lambda = (LambdaObject) predicate;
-                    return stream.filter(elem -> (Boolean) invokeLambda(lambda, Arrays.asList(elem)));
-                }
-            } else if (methodName.equals("collect")) {
-                Object collector = args.get(0);
-                if (collector instanceof Map) {
-                    Map<?, ?> map = (Map<?, ?>) collector;
-                    if (map.containsKey("type")) {
-                        String type = (String) map.get("type");
-                        if (type.equals("toList")) {
-                            return stream.collect(Collectors.toList());
-                        } else if (type.equals("toSet")) {
-                            return stream.collect(Collectors.toSet());
-                        }
-                    }
-                }
-            } else if (methodName.equals("count")) {
-                return stream.count();
-            } else if (methodName.equals("findFirst")) {
-                return stream.findFirst();
-            }
-        }
-        
-        if (target instanceof String) {
-            String str = (String) target;
-            if (methodName.equals("length")) {
-                return str.length();
-            } else if (methodName.equals("charAt")) {
-                return str.charAt((Integer) args.get(0));
-            } else if (methodName.equals("substring")) {
-                if (args.size() == 1) {
-                    return str.substring((Integer) args.get(0));
-                }
-                return str.substring((Integer) args.get(0), (Integer) args.get(1));
-            } else if (methodName.equals("indexOf")) {
-                return str.indexOf((String) args.get(0));
-            } else if (methodName.equals("contains")) {
-                return str.contains((String) args.get(0));
-            } else if (methodName.equals("startsWith")) {
-                return str.startsWith((String) args.get(0));
-            } else if (methodName.equals("endsWith")) {
-                return str.endsWith((String) args.get(0));
-            } else if (methodName.equals("trim")) {
-                return str.trim();
-            } else if (methodName.equals("toLowerCase")) {
-                return str.toLowerCase();
-            } else if (methodName.equals("toUpperCase")) {
-                return str.toUpperCase();
-            } else if (methodName.equals("replace")) {
-                return str.replace((CharSequence) args.get(0), (CharSequence) args.get(1));
-            } else if (methodName.equals("split")) {
-                return str.split((String) args.get(0));
-            } else if (methodName.equals("equals")) {
-                return str.equals(args.get(0));
-            } else if (methodName.equals("equalsIgnoreCase")) {
-                return str.equalsIgnoreCase((String) args.get(0));
-            } else if (methodName.equals("compareTo")) {
-                return str.compareTo((String) args.get(0));
-            } else if (methodName.equals("compareToIgnoreCase")) {
-                return str.compareToIgnoreCase((String) args.get(0));
-            } else if (methodName.equals("isEmpty")) {
-                return str.isEmpty();
-            } else if (methodName.equals("concat")) {
-                return str.concat((String) args.get(0));
-            } else if (methodName.equals("getBytes")) {
-                return str.getBytes();
-            } else if (methodName.equals("toCharArray")) {
-                return str.toCharArray();
-            }
-        }
-        
-        if (target instanceof Integer) {
-            Integer num = (Integer) target;
-            if (methodName.equals("intValue")) {
-                return num.intValue();
-            } else if (methodName.equals("longValue")) {
-                return num.longValue();
-            } else if (methodName.equals("doubleValue")) {
-                return num.doubleValue();
-            } else if (methodName.equals("floatValue")) {
-                return num.floatValue();
-            } else if (methodName.equals("shortValue")) {
-                return num.shortValue();
-            } else if (methodName.equals("byteValue")) {
-                return num.byteValue();
-            } else if (methodName.equals("compareTo")) {
-                return num.compareTo((Integer) args.get(0));
-            } else if (methodName.equals("toString")) {
-                return num.toString();
-            } else if (methodName.equals("equals")) {
-                return num.equals(args.get(0));
-            }
-        }
-        
-        if (target instanceof Long) {
-            Long num = (Long) target;
-            if (methodName.equals("intValue")) {
-                return num.intValue();
-            } else if (methodName.equals("longValue")) {
-                return num.longValue();
-            } else if (methodName.equals("doubleValue")) {
-                return num.doubleValue();
-            }
-        }
-        
-        if (target instanceof Double) {
-            Double num = (Double) target;
-            if (methodName.equals("intValue")) {
-                return num.intValue();
-            } else if (methodName.equals("longValue")) {
-                return num.longValue();
-            } else if (methodName.equals("doubleValue")) {
-                return num.doubleValue();
-            }
-        }
-        
-        if (target instanceof Float) {
-            Float num = (Float) target;
-            if (methodName.equals("intValue")) {
-                return num.intValue();
-            } else if (methodName.equals("floatValue")) {
-                return num.floatValue();
-            } else if (methodName.equals("doubleValue")) {
-                return num.doubleValue();
-            }
-        }
-        
-        if (target instanceof Character) {
-            Character ch = (Character) target;
-            if (methodName.equals("charValue")) {
-                return ch.charValue();
-            } else if (methodName.equals("compareTo")) {
-                return ch.compareTo((Character) args.get(0));
-            } else if (methodName.equals("equals")) {
-                return ch.equals(args.get(0));
-            }
-        }
-        
-        if (target instanceof Boolean) {
-            Boolean bool = (Boolean) target;
-            if (methodName.equals("booleanValue")) {
-                return bool.booleanValue();
-            } else if (methodName.equals("compareTo")) {
-                return bool.compareTo((Boolean) args.get(0));
-            }
-        }
-        
-        if (target instanceof java.io.PrintStream) {
-            java.io.PrintStream ps = (java.io.PrintStream) target;
-            if (methodName.equals("println")) {
-                if (args.isEmpty()) {
-                    ps.println();
-                } else {
-                    ps.println(args.get(0));
-                }
-                return null;
-            } else if (methodName.equals("print")) {
-                ps.print(args.get(0));
-                return null;
-            } else if (methodName.equals("printf")) {
-                Object[] formatArgs = args.subList(1, args.size()).toArray();
-                return ps.printf((String) args.get(0), formatArgs);
-            } else if (methodName.equals("flush")) {
-                ps.flush();
-                return null;
-            }
-        }
-        
-        if (target instanceof Optional) {
-            Optional<?> opt = (Optional<?>) target;
-            if (methodName.equals("isPresent")) {
-                return opt.isPresent();
-            } else if (methodName.equals("get")) {
-                return opt.get();
-            } else if (methodName.equals("orElse")) {
-                @SuppressWarnings("unchecked")
-                Optional<Object> optObj = (Optional<Object>) opt;
-                return optObj.orElse(args.get(0));
-            } else if (methodName.equals("ifPresent")) {
-                Object consumer = args.get(0);
-                if (consumer instanceof LambdaObject) {
-                    LambdaObject lambda = (LambdaObject) consumer;
-                    opt.ifPresent(elem -> invokeLambda(lambda, Arrays.asList(elem)));
-                }
-                return null;
-            } else if (methodName.equals("map")) {
-                Object mapper = args.get(0);
-                if (mapper instanceof LambdaObject) {
-                    LambdaObject lambda = (LambdaObject) mapper;
-                    return opt.map(elem -> invokeLambda(lambda, Arrays.asList(elem)));
-                }
-            }
-        }
-        
-        if (target instanceof Throwable) {
-            Throwable throwable = (Throwable) target;
-            if (methodName.equals("getMessage")) {
-                return throwable.getMessage();
-            } else if (methodName.equals("getLocalizedMessage")) {
-                return throwable.getLocalizedMessage();
-            } else if (methodName.equals("getCause")) {
-                return throwable.getCause();
-            } else if (methodName.equals("printStackTrace")) {
-                throwable.printStackTrace();
-                return null;
-            } else if (methodName.equals("toString")) {
-                return throwable.toString();
-            } else if (methodName.equals("fillInStackTrace")) {
-                return throwable.fillInStackTrace();
-            } else if (methodName.equals("getStackTrace")) {
-                return throwable.getStackTrace();
-            }
-        }
-        
-        if (target instanceof java.io.InputStream) {
-            java.io.InputStream is = (java.io.InputStream) target;
-            try {
-                if (methodName.equals("read")) {
-                    if (args.isEmpty()) {
-                        return is.read();
-                    } else if (args.size() == 1 && args.get(0) instanceof byte[]) {
-                        return is.read((byte[]) args.get(0));
-                    } else if (args.size() == 3 && args.get(0) instanceof byte[]) {
-                        return is.read((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2));
-                    }
-                } else if (methodName.equals("available")) {
-                    return is.available();
-                } else if (methodName.equals("close")) {
-                    is.close();
-                    return null;
-                } else if (methodName.equals("skip")) {
-                    return is.skip((Long) args.get(0));
-                }
-            } catch (java.io.IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        
-        if (target instanceof java.io.OutputStream) {
-            java.io.OutputStream os = (java.io.OutputStream) target;
-            try {
-                if (methodName.equals("write")) {
-                    if (args.size() == 1) {
-                        Object arg = args.get(0);
-                        if (arg instanceof Integer) {
-                            os.write((Integer) arg);
-                        } else if (arg instanceof byte[]) {
-                            os.write((byte[]) arg);
-                        }
-                    } else if (args.size() == 3 && args.get(0) instanceof byte[]) {
-                        os.write((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2));
-                    }
-                    return null;
-                } else if (methodName.equals("flush")) {
-                    os.flush();
-                    return null;
-                } else if (methodName.equals("close")) {
-                    os.close();
-                    return null;
-                }
-            } catch (java.io.IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        
-        if (target instanceof java.net.Socket) {
-            java.net.Socket socket = (java.net.Socket) target;
-            try {
-                if (methodName.equals("getInputStream")) {
-                    return socket.getInputStream();
-                } else if (methodName.equals("getOutputStream")) {
-                    return socket.getOutputStream();
-                } else if (methodName.equals("close")) {
-                    socket.close();
-                    return null;
-                } else if (methodName.equals("setSoTimeout")) {
-                    socket.setSoTimeout((Integer) args.get(0));
-                    return null;
-                } else if (methodName.equals("setTcpNoDelay")) {
-                    socket.setTcpNoDelay((Boolean) args.get(0));
-                    return null;
-                } else if (methodName.equals("isClosed")) {
-                    return socket.isClosed();
-                } else if (methodName.equals("isConnected")) {
-                    return socket.isConnected();
-                }
-            } catch (java.io.IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        
-        if (target instanceof java.net.ServerSocket) {
-            java.net.ServerSocket serverSocket = (java.net.ServerSocket) target;
-            try {
-                if (methodName.equals("accept")) {
-                    return serverSocket.accept();
-                } else if (methodName.equals("close")) {
-                    serverSocket.close();
-                    return null;
-                } else if (methodName.equals("isClosed")) {
-                    return serverSocket.isClosed();
-                }
-            } catch (java.io.IOException e) {
-                throw new RuntimeException(e);
             }
         }
         
@@ -537,17 +555,65 @@ public class StandardLibrary {
             return target.equals(args.get(0));
         }
         
+        return invokeByReflection(target, methodName, args);
+    }
+    
+    private NativeMethodRegistry.MethodHandler findMethodHandler(Class<?> targetClass, String methodName) {
+        NativeMethodRegistry.MethodHandler handler = methodRegistry.getMethodHandler(targetClass, methodName);
+        if (handler != null) {
+            return handler;
+        }
+        
+        for (Map.Entry<Class<?>, Map<String, NativeMethodRegistry.MethodHandler>> entry : 
+             methodRegistry.getMethodRegistry().entrySet()) {
+            if (entry.getKey().isAssignableFrom(targetClass)) {
+                handler = entry.getValue().get(methodName);
+                if (handler != null) {
+                    return handler;
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    private Object invokeByReflection(Object target, String methodName, List<Object> args) {
         try {
             Class<?>[] paramTypes = args.stream()
                 .map(arg -> arg != null ? arg.getClass() : Object.class)
                 .toArray(Class<?>[]::new);
             
+            Class<?> targetClass = target.getClass();
+            
+            Set<Class<?>> visitedInterfaces = new HashSet<>();
+            List<Class<?>> allInterfaces = new ArrayList<>();
+            collectAllInterfaces(targetClass, allInterfaces, visitedInterfaces);
+            
+            for (Class<?> iface : allInterfaces) {
+                try {
+                    java.lang.reflect.Method method = iface.getMethod(methodName, paramTypes);
+                    method.setAccessible(true);
+                    return method.invoke(target, args.toArray());
+                } catch (NoSuchMethodException e) {
+                    for (java.lang.reflect.Method method : iface.getMethods()) {
+                        if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
+                            try {
+                                method.setAccessible(true);
+                                return method.invoke(target, args.toArray());
+                            } catch (Exception ex) {
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            
             try {
-                java.lang.reflect.Method method = target.getClass().getMethod(methodName, paramTypes);
+                java.lang.reflect.Method method = targetClass.getMethod(methodName, paramTypes);
                 method.setAccessible(true);
                 return method.invoke(target, args.toArray());
             } catch (NoSuchMethodException e) {
-                for (java.lang.reflect.Method method : target.getClass().getMethods()) {
+                for (java.lang.reflect.Method method : targetClass.getMethods()) {
                     if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
                         try {
                             method.setAccessible(true);
@@ -558,7 +624,7 @@ public class StandardLibrary {
                     }
                 }
                 
-                for (java.lang.reflect.Method method : target.getClass().getDeclaredMethods()) {
+                for (java.lang.reflect.Method method : targetClass.getDeclaredMethods()) {
                     if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
                         try {
                             method.setAccessible(true);
@@ -573,6 +639,22 @@ public class StandardLibrary {
         }
         
         return null;
+    }
+    
+    private void collectAllInterfaces(Class<?> clazz, List<Class<?>> interfaces, Set<Class<?>> visited) {
+        if (clazz == null || visited.contains(clazz)) {
+            return;
+        }
+        visited.add(clazz);
+        
+        for (Class<?> iface : clazz.getInterfaces()) {
+            if (!interfaces.contains(iface)) {
+                interfaces.add(iface);
+                collectAllInterfaces(iface, interfaces, visited);
+            }
+        }
+        
+        collectAllInterfaces(clazz.getSuperclass(), interfaces, visited);
     }
     
     public Object getField(Object target, String fieldName) {
@@ -627,134 +709,19 @@ public class StandardLibrary {
     }
     
     public Object createObject(String typeName, List<Object> args) {
-        switch (typeName) {
-            case "Thread":
-            case "java.lang.Thread":
-                return createThread(args);
-            case "ArrayList":
-            case "java.util.ArrayList":
-                return new ArrayList<>();
-            case "LinkedList":
-            case "java.util.LinkedList":
-                return new LinkedList<>();
-            case "HashMap":
-            case "java.util.HashMap":
-                return new HashMap<>();
-            case "HashSet":
-            case "java.util.HashSet":
-                return new HashSet<>();
-            case "TreeMap":
-            case "java.util.TreeMap":
-                return new TreeMap<>();
-            case "TreeSet":
-            case "java.util.TreeSet":
-                return new TreeSet<>();
-            case "StringBuilder":
-            case "java.lang.StringBuilder":
-                return new StringBuilder();
-            case "StringBuffer":
-            case "java.lang.StringBuffer":
-                return new StringBuffer();
-            case "Object":
-            case "java.lang.Object":
-                return new Object();
-            case "Integer":
-            case "java.lang.Integer":
-                if (args.isEmpty()) return 0;
-                return ((Number) args.get(0)).intValue();
-            case "Long":
-            case "java.lang.Long":
-                if (args.isEmpty()) return 0L;
-                return ((Number) args.get(0)).longValue();
-            case "Double":
-            case "java.lang.Double":
-                if (args.isEmpty()) return 0.0;
-                return ((Number) args.get(0)).doubleValue();
-            case "Float":
-            case "java.lang.Float":
-                if (args.isEmpty()) return 0.0f;
-                return ((Number) args.get(0)).floatValue();
-            case "Boolean":
-            case "java.lang.Boolean":
-                if (args.isEmpty()) return false;
-                return args.get(0);
-            case "Character":
-            case "java.lang.Character":
-                if (args.isEmpty()) return '\0';
-                return args.get(0);
-            case "String":
-            case "java.lang.String":
-                if (args.isEmpty()) return "";
-                if (args.size() == 1) {
-                    Object arg = args.get(0);
-                    if (arg instanceof byte[]) {
-                        return new String((byte[]) arg, java.nio.charset.StandardCharsets.UTF_8);
-                    }
-                    return String.valueOf(arg);
-                }
-                if (args.size() == 3 && args.get(0) instanceof byte[]) {
-                    try {
-                        return new String((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2), java.nio.charset.StandardCharsets.UTF_8);
-                    } catch (Exception e) {
-                        return new String((byte[]) args.get(0), (Integer) args.get(1), (Integer) args.get(2));
-                    }
-                }
-                return String.valueOf(args.get(0));
-            case "IOException":
-            case "java.io.IOException":
-                if (args.isEmpty()) return new java.io.IOException();
-                return new java.io.IOException(String.valueOf(args.get(0)));
-            case "Exception":
-            case "java.lang.Exception":
-                if (args.isEmpty()) return new Exception();
-                return new Exception(String.valueOf(args.get(0)));
-            case "RuntimeException":
-            case "java.lang.RuntimeException":
-                if (args.isEmpty()) return new RuntimeException();
-                return new RuntimeException(String.valueOf(args.get(0)));
-            case "IllegalArgumentException":
-            case "java.lang.IllegalArgumentException":
-                if (args.isEmpty()) return new IllegalArgumentException();
-                return new IllegalArgumentException(String.valueOf(args.get(0)));
-            case "NullPointerException":
-            case "java.lang.NullPointerException":
-                if (args.isEmpty()) return new NullPointerException();
-                return new NullPointerException(String.valueOf(args.get(0)));
-            case "ArithmeticException":
-            case "java.lang.ArithmeticException":
-                if (args.isEmpty()) return new ArithmeticException();
-                return new ArithmeticException(String.valueOf(args.get(0)));
-            case "IndexOutOfBoundsException":
-            case "java.lang.IndexOutOfBoundsException":
-                if (args.isEmpty()) return new IndexOutOfBoundsException();
-                return new IndexOutOfBoundsException(String.valueOf(args.get(0)));
-            case "ArrayIndexOutOfBoundsException":
-            case "java.lang.ArrayIndexOutOfBoundsException":
-                if (args.isEmpty()) return new ArrayIndexOutOfBoundsException();
-                return new ArrayIndexOutOfBoundsException(String.valueOf(args.get(0)));
-            case "ClassCastException":
-            case "java.lang.ClassCastException":
-                if (args.isEmpty()) return new ClassCastException();
-                return new ClassCastException(String.valueOf(args.get(0)));
-            case "NumberFormatException":
-            case "java.lang.NumberFormatException":
-                if (args.isEmpty()) return new NumberFormatException();
-                return new NumberFormatException(String.valueOf(args.get(0)));
-            case "UnsupportedOperationException":
-            case "java.lang.UnsupportedOperationException":
-                if (args.isEmpty()) return new UnsupportedOperationException();
-                return new UnsupportedOperationException(String.valueOf(args.get(0)));
-            case "Throwable":
-            case "java.lang.Throwable":
-                if (args.isEmpty()) return new Throwable();
-                return new Throwable(String.valueOf(args.get(0)));
-            case "Error":
-            case "java.lang.Error":
-                if (args.isEmpty()) return new Error();
-                return new Error(String.valueOf(args.get(0)));
-            default:
-                return createObjectByReflection(typeName, args);
+        if (typeName.equals("Thread") || typeName.equals("java.lang.Thread")) {
+            return createThread(args);
         }
+        
+        Function<List<Object>, Object> constructor = constructorRegistry.getConstructor(typeName);
+        if (constructor != null) {
+            Object result = constructor.apply(args);
+            if (result != null) {
+                return result;
+            }
+        }
+        
+        return createObjectByReflection(typeName, args);
     }
     
     private Object createObjectByReflection(String typeName, List<Object> args) {
@@ -952,28 +919,11 @@ public class StandardLibrary {
     }
     
     public Object resolveStaticImport(String name) {
-        switch (name) {
-            case "out": return System.out;
-            case "err": return System.err;
-            case "PI": return Math.PI;
-            case "E": return Math.E;
-            case "System": return new SystemHolder();
-            case "sqrt": return new StaticMethodHolder("sqrt");
-            case "pow": return new StaticMethodHolder("pow");
-            case "abs": return new StaticMethodHolder("abs");
-            case "max": return new StaticMethodHolder("max");
-            case "min": return new StaticMethodHolder("min");
-            case "sin": return new StaticMethodHolder("sin");
-            case "cos": return new StaticMethodHolder("cos");
-            case "tan": return new StaticMethodHolder("tan");
-            case "log": return new StaticMethodHolder("log");
-            case "exp": return new StaticMethodHolder("exp");
-            case "floor": return new StaticMethodHolder("floor");
-            case "ceil": return new StaticMethodHolder("ceil");
-            case "round": return new StaticMethodHolder("round");
-            case "random": return new StaticMethodHolder("random");
-            default: return null;
-        }
+        return staticImportRegistry.resolve(name);
+    }
+    
+    public StaticImportRegistry getStaticImportRegistry() {
+        return staticImportRegistry;
     }
     
     public static class SystemHolder {
@@ -1221,11 +1171,228 @@ public class StandardLibrary {
                     Class<?> otherClass = (Class<?>) args.get(0);
                     return clazz.isAssignableFrom(otherClass);
                 default:
-                    return null;
+                    return invokeStaticMethodByReflection(clazz, methodName, args);
             }
         } catch (Exception e) {
             throw new RuntimeException("Reflection error: " + e.getMessage(), e);
         }
+    }
+    
+    private Object invokeStaticMethodByReflection(Class<?> clazz, String methodName, List<Object> args) {
+        try {
+            for (java.lang.reflect.Method method : clazz.getMethods()) {
+                if (method.getName().equals(methodName) && 
+                    java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
+                    if (method.isVarArgs()) {
+                        int fixedParams = method.getParameterCount() - 1;
+                        if (args.size() >= fixedParams) {
+                            method.setAccessible(true);
+                            Object[] argsArray = convertArgsForVarargsMethod(method, args);
+                            return method.invoke(null, argsArray);
+                        }
+                    } else if (method.getParameterCount() == args.size()) {
+                        method.setAccessible(true);
+                        Object[] argsArray = convertArgsForMethod(method, args);
+                        return method.invoke(null, argsArray);
+                    }
+                }
+            }
+            
+            for (java.lang.reflect.Method method : clazz.getDeclaredMethods()) {
+                if (method.getName().equals(methodName) && 
+                    java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
+                    if (method.isVarArgs()) {
+                        int fixedParams = method.getParameterCount() - 1;
+                        if (args.size() >= fixedParams) {
+                            method.setAccessible(true);
+                            Object[] argsArray = convertArgsForVarargsMethod(method, args);
+                            return method.invoke(null, argsArray);
+                        }
+                    } else if (method.getParameterCount() == args.size()) {
+                        method.setAccessible(true);
+                        Object[] argsArray = convertArgsForMethod(method, args);
+                        return method.invoke(null, argsArray);
+                    }
+                }
+            }
+            
+            return null;
+        } catch (Exception e) {
+            throw new RuntimeException("Static method invocation error: " + e.getMessage(), e);
+        }
+    }
+    
+    private Object[] convertArgsForVarargsMethod(java.lang.reflect.Method method, List<Object> args) {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        int fixedParams = paramTypes.length - 1;
+        Object[] converted = new Object[paramTypes.length];
+        
+        for (int i = 0; i < fixedParams; i++) {
+            Object arg = args.get(i);
+            Class<?> paramType = paramTypes[i];
+            converted[i] = convertSingleArg(arg, paramType);
+        }
+        
+        Class<?> varargType = paramTypes[fixedParams];
+        Class<?> componentType = varargType.getComponentType();
+        int varargCount = args.size() - fixedParams;
+        Object varargArray = java.lang.reflect.Array.newInstance(componentType, varargCount);
+        
+        for (int i = 0; i < varargCount; i++) {
+            Object arg = args.get(fixedParams + i);
+            Object convertedArg = convertSingleArg(arg, componentType);
+            java.lang.reflect.Array.set(varargArray, i, convertedArg);
+        }
+        converted[fixedParams] = varargArray;
+        
+        return converted;
+    }
+    
+    private Object convertSingleArg(Object arg, Class<?> paramType) {
+        if (arg == null) {
+            return null;
+        } else if (arg instanceof LambdaObject) {
+            return convertLambdaToFunctionalInterface((LambdaObject) arg, paramType);
+        } else if (arg instanceof MethodReferenceObject) {
+            return convertMethodReferenceToFunctionalInterface((MethodReferenceObject) arg, paramType);
+        } else if (paramType == int.class) {
+            return ((Number) arg).intValue();
+        } else if (paramType == long.class) {
+            return ((Number) arg).longValue();
+        } else if (paramType == double.class) {
+            return ((Number) arg).doubleValue();
+        } else if (paramType == float.class) {
+            return ((Number) arg).floatValue();
+        } else if (paramType == boolean.class) {
+            return arg;
+        } else if (paramType == char.class) {
+            return arg;
+        } else if (paramType == byte.class) {
+            return ((Number) arg).byteValue();
+        } else if (paramType == short.class) {
+            return ((Number) arg).shortValue();
+        } else {
+            return arg;
+        }
+    }
+    
+    private Object[] convertArgsForMethod(java.lang.reflect.Method method, List<Object> args) {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        Object[] converted = new Object[args.size()];
+        
+        for (int i = 0; i < args.size(); i++) {
+            Object arg = args.get(i);
+            Class<?> paramType = paramTypes[i];
+            
+            if (arg == null) {
+                converted[i] = null;
+            } else if (arg instanceof LambdaObject) {
+                converted[i] = convertLambdaToFunctionalInterface((LambdaObject) arg, paramType);
+            } else if (arg instanceof MethodReferenceObject) {
+                converted[i] = convertMethodReferenceToFunctionalInterface((MethodReferenceObject) arg, paramType);
+            } else if (paramType.isArray()) {
+                if (paramType.isInstance(arg)) {
+                    converted[i] = arg;
+                } else if (arg instanceof List) {
+                    List<?> list = (List<?>) arg;
+                    Class<?> componentType = paramType.getComponentType();
+                    if (componentType == int.class) {
+                        int[] arr = new int[list.size()];
+                        for (int j = 0; j < list.size(); j++) {
+                            arr[j] = ((Number) list.get(j)).intValue();
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == long.class) {
+                        long[] arr = new long[list.size()];
+                        for (int j = 0; j < list.size(); j++) {
+                            arr[j] = ((Number) list.get(j)).longValue();
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == double.class) {
+                        double[] arr = new double[list.size()];
+                        for (int j = 0; j < list.size(); j++) {
+                            arr[j] = ((Number) list.get(j)).doubleValue();
+                        }
+                        converted[i] = arr;
+                    } else {
+                        converted[i] = list.toArray();
+                    }
+                } else {
+                    converted[i] = arg;
+                }
+            } else if (paramType == int.class) {
+                converted[i] = ((Number) arg).intValue();
+            } else if (paramType == long.class) {
+                converted[i] = ((Number) arg).longValue();
+            } else if (paramType == double.class) {
+                converted[i] = ((Number) arg).doubleValue();
+            } else if (paramType == float.class) {
+                converted[i] = ((Number) arg).floatValue();
+            } else if (paramType == boolean.class) {
+                converted[i] = arg;
+            } else if (paramType == char.class) {
+                converted[i] = arg;
+            } else if (paramType == byte.class) {
+                converted[i] = ((Number) arg).byteValue();
+            } else if (paramType == short.class) {
+                converted[i] = ((Number) arg).shortValue();
+            } else {
+                converted[i] = arg;
+            }
+        }
+        
+        return converted;
+    }
+    
+    private Object convertLambdaToFunctionalInterface(LambdaObject lambda, Class<?> functionalInterface) {
+        if (java.util.function.Supplier.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.Supplier<Object>) () -> {
+                return invokeLambda(lambda, new ArrayList<>());
+            };
+        } else if (java.util.function.Consumer.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.Consumer<Object>) (arg) -> {
+                invokeLambda(lambda, Arrays.asList(arg));
+            };
+        } else if (java.util.function.Function.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.Function<Object, Object>) (arg) -> {
+                return invokeLambda(lambda, Arrays.asList(arg));
+            };
+        } else if (java.util.function.Predicate.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.Predicate<Object>) (arg) -> {
+                Object result = invokeLambda(lambda, Arrays.asList(arg));
+                return interpreter.toBoolean(result);
+            };
+        } else if (java.util.function.BiFunction.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.BiFunction<Object, Object, Object>) (a, b) -> {
+                return invokeLambda(lambda, Arrays.asList(a, b));
+            };
+        } else if (java.util.function.BiConsumer.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.BiConsumer<Object, Object>) (a, b) -> {
+                invokeLambda(lambda, Arrays.asList(a, b));
+            };
+        } else if (Runnable.class.isAssignableFrom(functionalInterface)) {
+            return (Runnable) () -> {
+                invokeLambda(lambda, new ArrayList<>());
+            };
+        }
+        return lambda;
+    }
+    
+    private Object convertMethodReferenceToFunctionalInterface(MethodReferenceObject methodRef, Class<?> functionalInterface) {
+        if (java.util.function.Supplier.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.Supplier<Object>) () -> {
+                return invokeMethodReference(methodRef, new ArrayList<>());
+            };
+        } else if (java.util.function.Consumer.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.Consumer<Object>) (arg) -> {
+                invokeMethodReference(methodRef, Arrays.asList(arg));
+            };
+        } else if (java.util.function.Function.class.isAssignableFrom(functionalInterface)) {
+            return (java.util.function.Function<Object, Object>) (arg) -> {
+                return invokeMethodReference(methodRef, Arrays.asList(arg));
+            };
+        }
+        return methodRef;
     }
     
     private Class<?>[] extractParamTypes(List<Object> args, int startIndex) {

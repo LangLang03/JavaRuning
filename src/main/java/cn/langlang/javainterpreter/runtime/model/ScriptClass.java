@@ -174,14 +174,71 @@ public class ScriptClass {
         if (this == other) return true;
         if (other == null) return false;
         
-        if (other.superClass != null && isAssignableFrom(other.superClass)) {
-            return true;
+        Set<ScriptClass> visited = new HashSet<>();
+        return isAssignableFromHelper(other, visited);
+    }
+    
+    private boolean isAssignableFromHelper(ScriptClass other, Set<ScriptClass> visited) {
+        if (this == other) return true;
+        if (other == null || visited.contains(other)) return false;
+        
+        visited.add(other);
+        
+        if (other.superClass != null) {
+            if (isAssignableFromHelper(other.superClass, visited)) {
+                return true;
+            }
         }
         
         for (ScriptClass iface : other.interfaces) {
-            if (isAssignableFrom(iface)) {
+            if (isAssignableFromHelper(iface, visited)) {
                 return true;
             }
+            
+            if (iface.superClass != null) {
+                if (isAssignableFromHelper(iface.superClass, visited)) {
+                    return true;
+                }
+            }
+            
+            for (ScriptClass extendedIface : iface.interfaces) {
+                if (isAssignableFromHelper(extendedIface, visited)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    public boolean isInstance(Object obj) {
+        if (obj == null) return false;
+        
+        if (obj instanceof RuntimeObject) {
+            RuntimeObject runtimeObj = (RuntimeObject) obj;
+            return isAssignableFrom(runtimeObj.getScriptClass());
+        }
+        
+        String typeName = this.name;
+        if (typeName.equals("Object") || typeName.equals("java.lang.Object")) {
+            return true;
+        }
+        
+        Class<?> objClass = obj.getClass();
+        if (typeName.equals("String") || typeName.equals("java.lang.String")) {
+            return objClass == String.class;
+        }
+        if (typeName.equals("Integer") || typeName.equals("java.lang.Integer")) {
+            return objClass == Integer.class;
+        }
+        if (typeName.equals("Long") || typeName.equals("java.lang.Long")) {
+            return objClass == Long.class;
+        }
+        if (typeName.equals("Double") || typeName.equals("java.lang.Double")) {
+            return objClass == Double.class;
+        }
+        if (typeName.equals("Boolean") || typeName.equals("java.lang.Boolean")) {
+            return objClass == Boolean.class;
         }
         
         return false;
