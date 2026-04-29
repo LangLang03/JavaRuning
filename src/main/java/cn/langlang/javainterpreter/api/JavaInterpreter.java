@@ -6,6 +6,8 @@ import cn.langlang.javainterpreter.parser.Modifier;
 import cn.langlang.javainterpreter.ast.misc.CompilationUnit;
 import cn.langlang.javainterpreter.ast.type.Type;
 import cn.langlang.javainterpreter.interpreter.*;
+import cn.langlang.javainterpreter.interpreter.exception.InterpreterException;
+import cn.langlang.javainterpreter.analyzer.StaticAnalyzer;
 import cn.langlang.javainterpreter.runtime.environment.Environment;
 import cn.langlang.javainterpreter.runtime.model.*;
 import cn.langlang.javainterpreter.runtime.nativesupport.NativeMethod;
@@ -18,12 +20,40 @@ public class JavaInterpreter {
     private final Interpreter interpreter;
     private final Environment globalEnv;
     private final Map<String, CompilationUnit> loadedUnits;
+    private final StaticAnalyzer staticAnalyzer;
     private String mainClassName;
     
     public JavaInterpreter() {
         this.interpreter = new Interpreter();
         this.globalEnv = interpreter.getGlobalEnvironment();
         this.loadedUnits = new HashMap<>();
+        this.staticAnalyzer = new StaticAnalyzer();
+    }
+    
+    public StaticAnalyzer.AnalysisResult lint(String source) {
+        return lint(source, null);
+    }
+    
+    public StaticAnalyzer.AnalysisResult lint(String source, String fileName) {
+        String processedSource = preprocessSource(source);
+        
+        if (fileName != null) {
+            staticAnalyzer.setFileName(fileName);
+        }
+        
+        Lexer lexer = new Lexer(processedSource);
+        List<Token> tokens = lexer.scanTokens();
+        
+        Parser parser = new Parser(tokens);
+        CompilationUnit ast = parser.parseCompilationUnit();
+        
+        return staticAnalyzer.analyze(ast);
+    }
+    
+    public StaticAnalyzer.AnalysisResult lintFile(String filePath) throws IOException {
+        String source = new String(Files.readAllBytes(Paths.get(filePath)));
+        String fileName = new File(filePath).getName();
+        return lint(source, fileName);
     }
     
     public void setMainClassName(String className) {

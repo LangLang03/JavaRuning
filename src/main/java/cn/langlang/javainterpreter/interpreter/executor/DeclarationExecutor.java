@@ -28,6 +28,9 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
         
         if (node.getSuperClass() != null) {
             superClass = interpreter.resolveClass(node.getSuperClass());
+            if (superClass != null && (superClass.getModifiers() & Modifier.FINAL) != 0) {
+                throw new RuntimeException("Cannot inherit from final class '" + superClass.getName() + "'");
+            }
         }
         
         List<ScriptClass> interfaces = new ArrayList<>();
@@ -58,6 +61,8 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
                 method.getParameters(), method.isVarArgs(), method.getBody(),
                 scriptClass, false, method.isDefault(), method.getAnnotations());
             scriptClass.addMethod(scriptMethod);
+            
+            checkFinalMethodOverride(scriptMethod, superClass);
         }
         
         for (ConstructorDeclaration constructor : node.getConstructors()) {
@@ -82,8 +87,185 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
         }
         
         processAnnotations(node, scriptClass);
+        
+        if ((node.getModifiers() & Modifier.ABSTRACT) == 0) {
+            checkAbstractMethodsImplemented(scriptClass);
+        }
 
         return null;
+    }
+    
+    private void checkAbstractMethodsImplemented(ScriptClass scriptClass) {
+        List<ScriptMethod> unimplementedMethods = new ArrayList<>();
+        collectAbstractMethods(scriptClass, unimplementedMethods, new HashSet<>());
+        
+        for (ScriptMethod abstractMethod : unimplementedMethods) {
+            boolean implemented = false;
+            for (ScriptMethod method : scriptClass.getMethods(abstractMethod.getName())) {
+                if (!method.isAbstract() && methodSignaturesMatch(method, abstractMethod)) {
+                    implemented = true;
+                    break;
+                }
+            }
+            if (!implemented) {
+                String declaringClassName = abstractMethod.getDeclaringClass() != null ? 
+                    abstractMethod.getDeclaringClass().getName() : "<unknown>";
+                throw new RuntimeException("Class '" + scriptClass.getName() + 
+                    "' is not abstract and does not override abstract method '" + 
+                    abstractMethod.getName() + "(" + getParameterTypesString(abstractMethod) + ")' in '" + 
+                    declaringClassName + "'");
+            }
+        }
+    }
+    
+    private void collectAbstractMethods(ScriptClass scriptClass, List<ScriptMethod> methods, Set<ScriptClass> visited) {
+        if (scriptClass == null || visited.contains(scriptClass)) {
+            return;
+        }
+        visited.add(scriptClass);
+        
+        for (ScriptMethod method : scriptClass.getMethods().values().stream().flatMap(List::stream).toList()) {
+            if (method.isAbstract() && !method.isDefault()) {
+                methods.add(method);
+            }
+        }
+        
+        if (scriptClass.getSuperClass() != null) {
+            collectAbstractMethods(scriptClass.getSuperClass(), methods, visited);
+        }
+        
+        for (ScriptClass iface : scriptClass.getInterfaces()) {
+            collectAbstractMethods(iface, methods, visited);
+        }
+    }
+    
+    private boolean methodSignaturesMatch(ScriptMethod m1, ScriptMethod m2) {
+        if (!m1.getName().equals(m2.getName())) {
+            return false;
+        }
+        List<ParameterDeclaration> params1 = m1.getParameters();
+        List<ParameterDeclaration> params2 = m2.getParameters();
+        if (params1.size() != params2.size()) {
+            return false;
+        }
+        if (m1.isVarArgs() != m2.isVarArgs()) {
+            return false;
+        }
+        return true;
+    }
+    
+    private String getParameterTypesString(ScriptMethod method) {
+        StringBuilder sb = new StringBuilder();
+        List<ParameterDeclaration> params = method.getParameters();
+        for (int i = 0; i < params.size(); i++) {
+            if (i > 0) sb.append(", ");
+            Type type = params.get(i).getType();
+            sb.append(type.getName());
+            if (i == params.size() - 1 && method.isVarArgs()) {
+                sb.append("...");
+            }
+        }
+        return sb.toString();
+    }
+    
+    private void checkFinalMethodOverride(ScriptMethod method, ScriptClass superClass) {
+        if (superClass == null) {
+            return;
+        }
+        
+        for (ScriptMethod superMethod : superClass.getMethods(method.getName())) {
+            if (methodSignaturesMatch(method, superMethod)) {
+                if ((superMethod.getModifiers() & Modifier.FINAL) != 0) {
+                    throw new RuntimeException("Cannot override final method '" + 
+                        method.getName() + "(" + getParameterTypesString(superMethod) + ")' in class '" + 
+                        superClass.getName() + "'");
+                }
+                
+                if (method.isStatic() && !superMethod.isStatic()) {
+                    throw new RuntimeException("Cannot override instance method '" + 
+                        method.getName() + "(" + getParameterTypesString(superMethod) + ")' with static method in class '" + 
+                        superClass.getName() + "'");
+                }
+                
+                if (!method.isStatic() && superMethod.isStatic()) {
+                    throw new RuntimeException("Cannot override static method '" + 
+                        method.getName() + "(" + getParameterTypesString(superMethod) + ")' with instance method in class '" + 
+                        superClass.getName() + "'");
+                }
+                
+                if (!method.isStatic()) {
+                    checkOverrideAccessModifier(method, superMethod, superClass);
+                    checkOverrideReturnType(method, superMethod, superClass);
+                }
+                
+                break;
+            }
+        }
+    }
+    
+    private void checkOverrideAccessModifier(ScriptMethod method, ScriptMethod superMethod, ScriptClass superClass) {
+        int methodMods = method.getModifiers();
+        int superMods = superMethod.getModifiers();
+        
+        boolean methodIsPublic = (methodMods & Modifier.PUBLIC) != 0;
+        boolean methodIsProtected = (methodMods & Modifier.PROTECTED) != 0;
+        boolean methodIsPrivate = (methodMods & Modifier.PRIVATE) != 0;
+        boolean methodIsPackage = !methodIsPublic && !methodIsProtected && !methodIsPrivate;
+        
+        boolean superIsPublic = (superMods & Modifier.PUBLIC) != 0;
+        boolean superIsProtected = (superMods & Modifier.PROTECTED) != 0;
+        boolean superIsPrivate = (superMods & Modifier.PRIVATE) != 0;
+        boolean superIsPackage = !superIsPublic && !superIsProtected && !superIsPrivate;
+        
+        if (superIsPublic && !methodIsPublic) {
+            throw new RuntimeException("Cannot reduce visibility of public method '" + 
+                method.getName() + "(" + getParameterTypesString(superMethod) + ")' in class '" + 
+                superClass.getName() + "'");
+        }
+        
+        if (superIsProtected && !methodIsProtected && !methodIsPublic) {
+            throw new RuntimeException("Cannot reduce visibility of protected method '" + 
+                method.getName() + "(" + getParameterTypesString(superMethod) + ")' in class '" + 
+                superClass.getName() + "'");
+        }
+        
+        if (superIsPackage && methodIsPrivate) {
+            throw new RuntimeException("Cannot reduce visibility of package-private method '" + 
+                method.getName() + "(" + getParameterTypesString(superMethod) + ")' in class '" + 
+                superClass.getName() + "'");
+        }
+    }
+    
+    private void checkOverrideReturnType(ScriptMethod method, ScriptMethod superMethod, ScriptClass superClass) {
+        Type methodReturn = method.getReturnType();
+        Type superReturn = superMethod.getReturnType();
+        
+        if (methodReturn == null && superReturn == null) {
+            return;
+        }
+        
+        if (methodReturn == null || superReturn == null) {
+            return;
+        }
+        
+        String methodReturnName = methodReturn.getName();
+        String superReturnName = superReturn.getName();
+        
+        if (methodReturnName.equals(superReturnName)) {
+            return;
+        }
+        
+        if (methodReturnName.equals("void") || superReturnName.equals("void")) {
+            if (!methodReturnName.equals(superReturnName)) {
+                throw new RuntimeException("Return type '" + methodReturnName + "' is not compatible with '" + 
+                    superReturnName + "' in overridden method '" + method.getName() + "(" + 
+                    getParameterTypesString(superMethod) + ")' in class '" + superClass.getName() + "'");
+            }
+        }
+        
+        if (methodReturnName.equals("Object") || superReturnName.equals("Object")) {
+            return;
+        }
     }
 
     private void processAnnotations(ClassDeclaration classDecl, ScriptClass scriptClass) {

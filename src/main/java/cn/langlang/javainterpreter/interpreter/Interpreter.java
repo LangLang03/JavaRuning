@@ -318,25 +318,302 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
                 String simpleName = importName.substring(lastDot + 1);
                 try {
                     Class<?> clazz = Class.forName(importName);
+                    if (getCurrentEnv().hasVariable(simpleName)) {
+                        Object existing = getCurrentEnv().getVariable(simpleName);
+                        if (existing != clazz && !(existing instanceof StandardLibrary.SystemHolder) && 
+                            !(existing instanceof Map) && !isCompatibleImport(existing, clazz)) {
+                            throw new RuntimeException("Import conflict: '" + simpleName + "' is already defined");
+                        }
+                    }
                     getCurrentEnv().defineVariable(simpleName, clazz);
                 } catch (ClassNotFoundException e) {
+                    throw new RuntimeException("Cannot find class: '" + importName + "'");
                 }
             }
         } else if (!isStatic && isAsterisk) {
-            String[] commonPackages = {
-                "java.lang.", "java.util.", "java.io.", "java.net.",
-                "java.util.regex.", "java.util.stream.", "java.util.function.",
-                "java.text.", "java.lang.reflect.", "java.nio.", "java.nio.file.",
-                "java.math.", "java.time.", "java.util.concurrent."
-            };
-            for (String pkg : commonPackages) {
-                if (importName.equals(pkg.substring(0, pkg.length() - 1)) || 
-                    importName.equals(pkg.substring(0, pkg.length() - 1).replace(".", ""))) {
+            registerPackageClasses(importName);
+        }
+        
+        return null;
+    }
+    
+    private void registerPackageClasses(String packageName) {
+        String normalizedName = packageName.endsWith(".*") ? 
+            packageName.substring(0, packageName.length() - 2) : packageName;
+        
+        Set<String> classNames = new HashSet<>();
+        
+        if (isAndroidRuntime()) {
+            classNames.addAll(findClassesOnAndroid(normalizedName));
+        } else {
+            classNames.addAll(findClassesOnJVM(normalizedName));
+        }
+        
+        for (String className : classNames) {
+            try {
+                String fullName = normalizedName + "." + className;
+                Class<?> clazz = Class.forName(fullName);
+                getCurrentEnv().defineVariable(className, clazz);
+            } catch (ClassNotFoundException e) {
+            } catch (NoClassDefFoundError e) {
+            } catch (Exception e) {
+            }
+        }
+    }
+    
+    private boolean isAndroidRuntime() {
+        try {
+            Class.forName("android.os.Build");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+    
+    private Set<String> findClassesOnAndroid(String packageName) {
+        Set<String> classNames = new HashSet<>();
+        
+        try {
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+            if (classLoader == null) {
+                classLoader = ClassLoader.getSystemClassLoader();
+            }
+            
+            try {
+                Class<?> dexFileClass = Class.forName("dalvik.system.DexFile");
+                java.lang.reflect.Method getSourceMethod = null;
+                
+                Class<?> pathClassLoaderClass = Class.forName("dalvik.system.PathClassLoader");
+                if (pathClassLoaderClass.isInstance(classLoader)) {
+                    getSourceMethod = pathClassLoaderClass.getDeclaredMethod("getPath");
+                    getSourceMethod.setAccessible(true);
+                    Object path = getSourceMethod.invoke(classLoader);
+                    if (path instanceof String) {
+                        String[] dexPaths = ((String) path).split(java.io.File.pathSeparator);
+                        for (String dexPath : dexPaths) {
+                            classNames.addAll(scanDexFile(dexPath, packageName, dexFileClass));
+                        }
+                    }
+                }
+                
+                Class<?> dexClassLoaderClass = Class.forName("dalvik.system.DexClassLoader");
+                if (dexClassLoaderClass.isInstance(classLoader)) {
+                    java.lang.reflect.Field pathListField = findField(classLoader.getClass(), "pathList");
+                    if (pathListField != null) {
+                        pathListField.setAccessible(true);
+                        Object pathList = pathListField.get(classLoader);
+                        if (pathList != null) {
+                            java.lang.reflect.Field dexElementsField = findField(pathList.getClass(), "dexElements");
+                            if (dexElementsField != null) {
+                                dexElementsField.setAccessible(true);
+                                Object[] dexElements = (Object[]) dexElementsField.get(pathList);
+                                for (Object element : dexElements) {
+                                    java.lang.reflect.Field dexFileField = findField(element.getClass(), "dexFile");
+                                    if (dexFileField != null) {
+                                        dexFileField.setAccessible(true);
+                                        Object dexFile = dexFileField.get(element);
+                                        if (dexFile != null) {
+                                            classNames.addAll(extractClassesFromDexFile(dexFile, packageName));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+            }
+            
+            String path = packageName.replace('.', '/');
+            Enumeration<java.net.URL> resources = classLoader.getResources(path);
+            while (resources.hasMoreElements()) {
+                java.net.URL resource = resources.nextElement();
+                classNames.addAll(findClassesInDirectory(new java.io.File(resource.getFile()), packageName));
+            }
+            
+        } catch (Exception e) {
+        }
+        
+        return classNames;
+    }
+    
+    private Set<String> scanDexFile(String dexPath, String packageName, Class<?> dexFileClass) {
+        Set<String> classNames = new HashSet<>();
+        try {
+            java.lang.reflect.Constructor<?> constructor = dexFileClass.getConstructor(String.class);
+            Object dexFile = constructor.newInstance(dexPath);
+            java.lang.reflect.Method entriesMethod = dexFileClass.getMethod("entries");
+            @SuppressWarnings("unchecked")
+            Enumeration<String> entries = (Enumeration<String>) entriesMethod.invoke(dexFile);
+            
+            String prefix = packageName + ".";
+            while (entries.hasMoreElements()) {
+                String className = entries.nextElement();
+                if (className.startsWith(prefix)) {
+                    String simpleName = className.substring(prefix.length());
+                    if (!simpleName.contains(".") && !simpleName.contains("$")) {
+                        if (isValidClassName(simpleName)) {
+                            classNames.add(simpleName);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+        }
+        return classNames;
+    }
+    
+    private Set<String> extractClassesFromDexFile(Object dexFile, String packageName) {
+        Set<String> classNames = new HashSet<>();
+        try {
+            java.lang.reflect.Method entriesMethod = dexFile.getClass().getMethod("entries");
+            @SuppressWarnings("unchecked")
+            Enumeration<String> entries = (Enumeration<String>) entriesMethod.invoke(dexFile);
+            
+            String prefix = packageName + ".";
+            while (entries.hasMoreElements()) {
+                String className = entries.nextElement();
+                if (className.startsWith(prefix)) {
+                    String simpleName = className.substring(prefix.length());
+                    if (!simpleName.contains(".") && !simpleName.contains("$")) {
+                        if (isValidClassName(simpleName)) {
+                            classNames.add(simpleName);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+        }
+        return classNames;
+    }
+    
+    private java.lang.reflect.Field findField(Class<?> clazz, String name) {
+        while (clazz != null) {
+            try {
+                return clazz.getDeclaredField(name);
+            } catch (NoSuchFieldException e) {
+                clazz = clazz.getSuperclass();
+            }
+        }
+        return null;
+    }
+    
+    private Set<String> findClassesOnJVM(String packageName) {
+        Set<String> classNames = new HashSet<>();
+        String path = packageName.replace('.', '/');
+        
+        try {
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+            if (classLoader == null) {
+                classLoader = ClassLoader.getSystemClassLoader();
+            }
+            
+            Enumeration<java.net.URL> resources = classLoader.getResources(path);
+            
+            while (resources.hasMoreElements()) {
+                java.net.URL resource = resources.nextElement();
+                if (resource.getProtocol().equals("file")) {
+                    classNames.addAll(findClassesInDirectory(new java.io.File(resource.getFile()), packageName));
+                } else if (resource.getProtocol().equals("jar")) {
+                    classNames.addAll(findClassesInJar(resource, path));
+                }
+            }
+        } catch (Exception e) {
+        }
+        
+        return classNames;
+    }
+    
+    private Set<String> findClassesInDirectory(java.io.File directory, String packageName) {
+        Set<String> classNames = new HashSet<>();
+        if (!directory.exists()) {
+            return classNames;
+        }
+        
+        java.io.File[] files = directory.listFiles();
+        if (files == null) {
+            return classNames;
+        }
+        
+        for (java.io.File file : files) {
+            if (file.isDirectory()) {
+                continue;
+            }
+            
+            String name = file.getName();
+            if (name.endsWith(".class")) {
+                String className = name.substring(0, name.length() - 6);
+                if (isValidClassName(className)) {
+                    classNames.add(className);
                 }
             }
         }
         
-        return null;
+        return classNames;
+    }
+    
+    private Set<String> findClassesInJar(java.net.URL jarUrl, String packagePath) {
+        Set<String> classNames = new HashSet<>();
+        
+        try {
+            String jarPath = jarUrl.getPath();
+            int bangIndex = jarPath.indexOf('!');
+            if (bangIndex == -1) {
+                return classNames;
+            }
+            
+            String filePath = jarPath.substring(0, bangIndex);
+            if (filePath.startsWith("file:")) {
+                filePath = filePath.substring(5);
+            }
+            
+            java.util.jar.JarFile jarFile = new java.util.jar.JarFile(java.net.URLDecoder.decode(filePath, "UTF-8"));
+            
+            Enumeration<java.util.jar.JarEntry> entries = jarFile.entries();
+            while (entries.hasMoreElements()) {
+                java.util.jar.JarEntry entry = entries.nextElement();
+                String entryName = entry.getName();
+                
+                if (entryName.startsWith(packagePath + "/") && entryName.endsWith(".class")) {
+                    String className = entryName.substring(packagePath.length() + 1, entryName.length() - 6);
+                    if (!className.contains("/") && !className.contains("$")) {
+                        if (isValidClassName(className)) {
+                            classNames.add(className);
+                        }
+                    }
+                }
+            }
+            
+            jarFile.close();
+        } catch (Exception e) {
+        }
+        
+        return classNames;
+    }
+    
+    private boolean isValidClassName(String name) {
+        if (name.isEmpty()) {
+            return false;
+        }
+        if (!Character.isJavaIdentifierStart(name.charAt(0))) {
+            return false;
+        }
+        for (int i = 1; i < name.length(); i++) {
+            if (!Character.isJavaIdentifierPart(name.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    private boolean isCompatibleImport(Object existing, Class<?> newClass) {
+        if (existing instanceof Class) {
+            return existing.equals(newClass);
+        }
+        if (existing instanceof ScriptClass) {
+            return ((ScriptClass) existing).getQualifiedName().equals(newClass.getName());
+        }
+        return false;
     }
     
     @Override

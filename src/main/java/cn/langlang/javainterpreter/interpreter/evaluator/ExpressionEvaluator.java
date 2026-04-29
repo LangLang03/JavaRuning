@@ -14,6 +14,7 @@ import cn.langlang.javainterpreter.ast.type.Type;
 import cn.langlang.javainterpreter.interpreter.Interpreter;
 import cn.langlang.javainterpreter.interpreter.exception.ReturnException;
 import cn.langlang.javainterpreter.lexer.TokenType;
+import cn.langlang.javainterpreter.parser.Modifier;
 import cn.langlang.javainterpreter.runtime.environment.Environment;
 import cn.langlang.javainterpreter.runtime.model.*;
 import cn.langlang.javainterpreter.runtime.nativesupport.StandardLibrary;
@@ -66,7 +67,12 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
             return thisObj.getField(name);
         }
         
-        return interpreter.getStdLib().resolveStaticImport(name);
+        Object staticImport = interpreter.getStdLib().resolveStaticImport(name);
+        if (staticImport != null) {
+            return staticImport;
+        }
+        
+        throw new RuntimeException("Cannot resolve symbol: '" + name + "'");
     }
     
     @Override
@@ -474,7 +480,12 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
             ScriptClass scriptClass = (ScriptClass) target;
             interpreter.initializeClass(scriptClass);
             ScriptMethod method = scriptClass.getMethod(node.getMethodName(), args);
-            if (method != null && method.isStatic()) {
+            if (method != null) {
+                if (!method.isStatic()) {
+                    throw new RuntimeException("Cannot call non-static method '" + node.getMethodName() + 
+                        "' from class '" + scriptClass.getName() + "'");
+                }
+                checkMethodAccess(method, scriptClass);
                 return interpreter.invokeMethod(null, method, args);
             }
         }
@@ -488,6 +499,7 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
             
             ScriptMethod method = obj.getScriptClass().getMethod(node.getMethodName(), args);
             if (method != null) {
+                checkMethodAccess(method, obj.getScriptClass());
                 return interpreter.invokeMethod(obj, method, args);
             }
         }
@@ -542,7 +554,12 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
         if (target instanceof ScriptClass) {
             ScriptClass scriptClass = (ScriptClass) target;
             ScriptField field = scriptClass.getField(node.getFieldName());
-            if (field != null && field.isStatic()) {
+            if (field != null) {
+                if (!field.isStatic()) {
+                    throw new RuntimeException("Cannot access non-static field '" + node.getFieldName() + 
+                        "' from class '" + scriptClass.getName() + "'");
+                }
+                checkFieldAccess(field, scriptClass);
                 String varName = scriptClass.getName() + "." + node.getFieldName();
                 if (interpreter.getCurrentEnv().hasVariable(varName)) {
                     return interpreter.getCurrentEnv().getVariable(varName);
@@ -564,6 +581,9 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
                 java.lang.reflect.Field field = clazz.getField(node.getFieldName());
                 if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
                     return field.get(null);
+                } else {
+                    throw new RuntimeException("Cannot access non-static field '" + node.getFieldName() + 
+                        "' from class '" + clazz.getName() + "'");
                 }
             } catch (NoSuchFieldException e) {
             } catch (IllegalAccessException e) {
@@ -571,15 +591,25 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
             try {
                 for (java.lang.reflect.Field field : clazz.getFields()) {
                     if (field.getName().equals(node.getFieldName())) {
-                        return field.get(null);
+                        if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                            return field.get(null);
+                        } else {
+                            throw new RuntimeException("Cannot access non-static field '" + node.getFieldName() + 
+                                "' from class '" + clazz.getName() + "'");
+                        }
                     }
                 }
             } catch (Exception e) {
+                if (e instanceof RuntimeException) throw (RuntimeException) e;
             }
         }
         
         if (target instanceof RuntimeObject) {
             RuntimeObject obj = (RuntimeObject) target;
+            ScriptField field = obj.getScriptClass().getField(node.getFieldName());
+            if (field != null) {
+                checkFieldAccess(field, obj.getScriptClass());
+            }
             return obj.getField(node.getFieldName());
         }
         
@@ -601,24 +631,66 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
         Object array = node.getArray().accept(this);
         Object index = node.getIndex().accept(this);
         
+        if (array == null) {
+            throw new RuntimeException("Cannot access array element on null");
+        }
+        
+        int idx = interpreter.toInt(index);
+        
         if (array instanceof Object[]) {
-            return ((Object[]) array)[interpreter.toInt(index)];
+            Object[] arr = (Object[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         } else if (array instanceof int[]) {
-            return ((int[]) array)[interpreter.toInt(index)];
+            int[] arr = (int[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         } else if (array instanceof long[]) {
-            return ((long[]) array)[interpreter.toInt(index)];
+            long[] arr = (long[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         } else if (array instanceof double[]) {
-            return ((double[]) array)[interpreter.toInt(index)];
+            double[] arr = (double[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         } else if (array instanceof float[]) {
-            return ((float[]) array)[interpreter.toInt(index)];
+            float[] arr = (float[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         } else if (array instanceof boolean[]) {
-            return ((boolean[]) array)[interpreter.toInt(index)];
+            boolean[] arr = (boolean[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         } else if (array instanceof char[]) {
-            return ((char[]) array)[interpreter.toInt(index)];
+            char[] arr = (char[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         } else if (array instanceof byte[]) {
-            return ((byte[]) array)[interpreter.toInt(index)];
+            byte[] arr = (byte[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         } else if (array instanceof short[]) {
-            return ((short[]) array)[interpreter.toInt(index)];
+            short[] arr = (short[]) array;
+            if (idx < 0 || idx >= arr.length) {
+                throw new RuntimeException("Array index out of bounds: " + idx + " (array length: " + arr.length + ")");
+            }
+            return arr[idx];
         }
         
         throw new RuntimeException("Cannot access array element on non-array type");
@@ -1060,16 +1132,74 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     }
     
     private Object castValue(Object value, Type targetType) {
-        if (value == null) return null;
+        if (value == null) {
+            String typeName = targetType.getName();
+            if (typeRegistry.isPrimitiveType(typeName)) {
+                throw new RuntimeException("Cannot cast null to primitive type '" + typeName + "'");
+            }
+            return null;
+        }
         
         String typeName = targetType.getName();
         Object result = typeRegistry.castValue(value, typeName);
         
-        if (result != value || value == null) {
+        if (result != value) {
             return result;
         }
         
+        if (!isTypeCompatible(value, targetType)) {
+            throw new RuntimeException("Cannot cast '" + value.getClass().getName() + "' to '" + typeName + "'");
+        }
+        
         return value;
+    }
+    
+    private boolean isTypeCompatible(Object value, Type targetType) {
+        if (value == null) {
+            return !typeRegistry.isPrimitiveType(targetType.getName());
+        }
+        
+        String typeName = targetType.getName();
+        
+        if (typeRegistry.isPrimitiveType(typeName)) {
+            return isPrimitiveCompatible(value, typeName);
+        }
+        
+        if (typeRegistry.isWrapperType(typeName)) {
+            Class<?> wrapperClass = typeRegistry.getClassLiteral(typeName);
+            if (wrapperClass != null && wrapperClass.isInstance(value)) {
+                return true;
+            }
+        }
+        
+        if (value instanceof RuntimeObject) {
+            RuntimeObject runtimeObj = (RuntimeObject) value;
+            ScriptClass targetClass = interpreter.resolveClass(targetType);
+            if (targetClass != null) {
+                return targetClass.isAssignableFrom(runtimeObj.getScriptClass());
+            }
+        }
+        
+        Class<?> targetClass = typeRegistry.getClassLiteral(typeName);
+        if (targetClass != null) {
+            return targetClass.isInstance(value);
+        }
+        
+        return true;
+    }
+    
+    private boolean isPrimitiveCompatible(Object value, String typeName) {
+        switch (typeName) {
+            case "int": return value instanceof Integer;
+            case "long": return value instanceof Long || value instanceof Integer;
+            case "short": return value instanceof Short || value instanceof Integer;
+            case "byte": return value instanceof Byte || value instanceof Integer;
+            case "char": return value instanceof Character;
+            case "boolean": return value instanceof Boolean;
+            case "float": return value instanceof Float || value instanceof Double || value instanceof Integer || value instanceof Long;
+            case "double": return value instanceof Double || value instanceof Float || value instanceof Integer || value instanceof Long;
+            default: return false;
+        }
     }
     
     @Override
@@ -1121,25 +1251,42 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     
     @Override
     public Object visitThisExpression(ThisExpression node) {
-        return interpreter.getCurrentEnv().getThisObject();
+        RuntimeObject thisObj = interpreter.getCurrentEnv().getThisObject();
+        if (thisObj == null) {
+            ScriptClass currentClass = interpreter.getCurrentEnv().getCurrentClass();
+            if (currentClass != null) {
+                throw new RuntimeException("Cannot use 'this' in static context of class '" + currentClass.getName() + "'");
+            }
+            throw new RuntimeException("Cannot use 'this' outside of instance context");
+        }
+        return thisObj;
     }
     
     @Override
     public Object visitSuperExpression(SuperExpression node) {
+        RuntimeObject thisObj = interpreter.getCurrentEnv().getThisObject();
+        if (thisObj == null) {
+            ScriptClass currentClass = interpreter.getCurrentEnv().getCurrentClass();
+            if (currentClass != null) {
+                throw new RuntimeException("Cannot use 'super' in static context of class '" + currentClass.getName() + "'");
+            }
+            throw new RuntimeException("Cannot use 'super' outside of instance context");
+        }
+        
         String interfaceName = node.getClassName();
         
         if (interfaceName != null) {
             ScriptClass interfaceClass = interpreter.getGlobalEnv().getClass(interfaceName);
             if (interfaceClass != null) {
-                return new InterfaceSuperObject(interpreter.getCurrentEnv().getThisObject(), interfaceClass);
+                return new InterfaceSuperObject(thisObj, interfaceClass);
             }
         }
         
-        RuntimeObject thisObj = interpreter.getCurrentEnv().getThisObject();
-        if (thisObj != null && thisObj.getScriptClass().getSuperClass() != null) {
+        if (thisObj.getScriptClass().getSuperClass() != null) {
             return new SuperObject(thisObj, thisObj.getScriptClass().getSuperClass());
         }
-        return thisObj;
+        throw new RuntimeException("Cannot use 'super' in class '" + thisObj.getScriptClass().getName() + 
+            "' that has no superclass");
     }
     
     @Override
@@ -1270,5 +1417,108 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     @Override
     public Object visitLocalClassDeclarationStatement(LocalClassDeclarationStatement node) {
         return node.getClassDeclaration().accept(interpreter.getDeclarationExecutor());
+    }
+    
+    private boolean isAccessible(ScriptField field, ScriptClass targetClass, ScriptClass currentClass) {
+        int modifiers = field.getModifiers();
+        
+        if ((modifiers & Modifier.PUBLIC) != 0) {
+            return true;
+        }
+        
+        if ((modifiers & Modifier.PRIVATE) != 0) {
+            return currentClass != null && currentClass.equals(field.getDeclaringClass());
+        }
+        
+        if ((modifiers & Modifier.PROTECTED) != 0) {
+            if (currentClass == null) {
+                return false;
+            }
+            if (isSamePackage(field.getDeclaringClass(), currentClass)) {
+                return true;
+            }
+            return isSubclass(currentClass, field.getDeclaringClass());
+        }
+        
+        return isSamePackage(field.getDeclaringClass(), currentClass);
+    }
+    
+    private boolean isAccessible(ScriptMethod method, ScriptClass targetClass, ScriptClass currentClass) {
+        int modifiers = method.getModifiers();
+        
+        if ((modifiers & Modifier.PUBLIC) != 0) {
+            return true;
+        }
+        
+        if ((modifiers & Modifier.PRIVATE) != 0) {
+            return currentClass != null && currentClass.equals(method.getDeclaringClass());
+        }
+        
+        if ((modifiers & Modifier.PROTECTED) != 0) {
+            if (currentClass == null) {
+                return false;
+            }
+            if (isSamePackage(method.getDeclaringClass(), currentClass)) {
+                return true;
+            }
+            return isSubclass(currentClass, method.getDeclaringClass());
+        }
+        
+        return isSamePackage(method.getDeclaringClass(), currentClass);
+    }
+    
+    private boolean isSamePackage(ScriptClass class1, ScriptClass class2) {
+        if (class1 == null || class2 == null) {
+            return false;
+        }
+        String qn1 = class1.getQualifiedName();
+        String qn2 = class2.getQualifiedName();
+        int lastDot1 = qn1.lastIndexOf('.');
+        int lastDot2 = qn2.lastIndexOf('.');
+        if (lastDot1 < 0 && lastDot2 < 0) {
+            return true;
+        }
+        if (lastDot1 < 0 || lastDot2 < 0) {
+            return false;
+        }
+        return qn1.substring(0, lastDot1).equals(qn2.substring(0, lastDot2));
+    }
+    
+    private boolean isSubclass(ScriptClass potentialSubclass, ScriptClass potentialSuperclass) {
+        ScriptClass current = potentialSubclass;
+        while (current != null) {
+            if (current.equals(potentialSuperclass)) {
+                return true;
+            }
+            current = current.getSuperClass();
+        }
+        return false;
+    }
+    
+    private void checkFieldAccess(ScriptField field, ScriptClass targetClass) {
+        ScriptClass currentClass = interpreter.getCurrentEnv().getCurrentClass();
+        if (!isAccessible(field, targetClass, currentClass)) {
+            String accessModifier = getAccessModifierName(field.getModifiers());
+            throw new RuntimeException("Cannot access " + accessModifier + " field '" + 
+                field.getName() + "' from class '" + 
+                (currentClass != null ? currentClass.getName() : "<unknown>") + "'");
+        }
+    }
+    
+    private void checkMethodAccess(ScriptMethod method, ScriptClass targetClass) {
+        ScriptClass currentClass = interpreter.getCurrentEnv().getCurrentClass();
+        if (!isAccessible(method, targetClass, currentClass)) {
+            String accessModifier = getAccessModifierName(method.getModifiers());
+            throw new RuntimeException("Cannot access " + accessModifier + " method '" + 
+                method.getName() + "' from class '" + 
+                (currentClass != null ? currentClass.getName() : "<unknown>") + "'");
+        }
+    }
+    
+    private String getAccessModifierName(int modifiers) {
+        if ((modifiers & Modifier.PRIVATE) != 0) return "private";
+        if ((modifiers & Modifier.PROTECTED) != 0) return "protected";
+        if ((modifiers & Modifier.PUBLIC) != 0) return "public";
+        return "package-private";
     }
 }
