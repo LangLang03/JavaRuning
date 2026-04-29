@@ -8,10 +8,12 @@ import cn.langlang.javainterpreter.ast.misc.EnumConstant;
 import cn.langlang.javainterpreter.ast.statement.BlockStatement;
 import cn.langlang.javainterpreter.ast.statement.LocalVariableDeclaration;
 import cn.langlang.javainterpreter.ast.type.Type;
+import cn.langlang.javainterpreter.ast.type.TypeParameter;
 import cn.langlang.javainterpreter.interpreter.Interpreter;
 import cn.langlang.javainterpreter.parser.Modifier;
 import cn.langlang.javainterpreter.runtime.environment.Environment;
 import cn.langlang.javainterpreter.runtime.model.*;
+import cn.langlang.javainterpreter.runtime.generics.*;
 import java.util.*;
 
 public class DeclarationExecutor extends AbstractASTVisitor<Object> {
@@ -41,6 +43,12 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
         ScriptClass scriptClass = new ScriptClass(name, name, node.getModifiers(),
                                                   superClass, interfaces, node);
         
+        if (node.getTypeParameters() != null && !node.getTypeParameters().isEmpty()) {
+            scriptClass.setTypeParameters(node.getTypeParameters());
+            GenericClassInfo genericInfo = createGenericClassInfo(node, scriptClass);
+            scriptClass.setGenericInfo(genericInfo);
+        }
+        
         interpreter.getGlobalEnv().defineClass(name, scriptClass);
         interpreter.getLoadedClasses().put(name, scriptClass);
         
@@ -49,6 +57,11 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
                 field.getName(), field.getModifiers(), field.getType(),
                 field.getInitializer(), scriptClass, field.getAnnotations());
             scriptClass.addField(scriptField);
+            
+            if (scriptClass.getGenericInfo() != null) {
+                GenericType genericFieldType = createGenericType(field.getType(), scriptClass.getGenericInfo());
+                scriptClass.getGenericInfo().registerGenericField(field.getName(), genericFieldType);
+            }
         }
         
         for (MethodDeclaration method : node.getMethods()) {
@@ -60,6 +73,13 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
                 method.getName(), method.getModifiers(), method.getReturnType(),
                 method.getParameters(), method.isVarArgs(), method.getBody(),
                 scriptClass, false, method.isDefault(), method.getAnnotations());
+            
+            if (method.getTypeParameters() != null && !method.getTypeParameters().isEmpty()) {
+                scriptMethod.setTypeParameters(method.getTypeParameters());
+                GenericMethodInfo genericMethodInfo = createGenericMethodInfo(method, scriptMethod, scriptClass);
+                scriptMethod.setGenericInfo(genericMethodInfo);
+            }
+            
             scriptClass.addMethod(scriptMethod);
             
             checkFinalMethodOverride(scriptMethod, superClass);
@@ -91,8 +111,142 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
         if ((node.getModifiers() & Modifier.ABSTRACT) == 0) {
             checkAbstractMethodsImplemented(scriptClass);
         }
+        
+        if (scriptClass.isGenericClass()) {
+            generateBridgeMethods(scriptClass);
+        }
 
         return null;
+    }
+    
+    private GenericClassInfo createGenericClassInfo(ClassDeclaration node, ScriptClass scriptClass) {
+        List<TypeParameter> typeParams = node.getTypeParameters();
+        
+        GenericType genericSuperClass = null;
+        if (node.getSuperClass() != null) {
+            genericSuperClass = createGenericType(node.getSuperClass(), null);
+        }
+        
+        List<GenericType> genericInterfaces = new ArrayList<>();
+        for (Type iface : node.getInterfaces()) {
+            genericInterfaces.add(createGenericType(iface, null));
+        }
+        
+        return new GenericClassInfo(scriptClass, typeParams, genericSuperClass, genericInterfaces);
+    }
+    
+    private GenericMethodInfo createGenericMethodInfo(MethodDeclaration method, ScriptMethod scriptMethod, 
+                                                       ScriptClass scriptClass) {
+        List<TypeParameter> typeParams = method.getTypeParameters();
+        
+        GenericType genericReturnType = null;
+        if (method.getReturnType() != null) {
+            genericReturnType = createGenericType(method.getReturnType(), scriptClass.getGenericInfo());
+        }
+        
+        List<GenericType> genericParamTypes = new ArrayList<>();
+        for (ParameterDeclaration param : method.getParameters()) {
+            genericParamTypes.add(createGenericType(param.getType(), scriptClass.getGenericInfo()));
+        }
+        
+        GenericMethodInfo methodInfo = new GenericMethodInfo(scriptMethod, typeParams, 
+            genericReturnType, genericParamTypes);
+        
+        if (scriptClass.getGenericInfo() != null) {
+            scriptClass.getGenericInfo().registerGenericMethod(method.getName(), methodInfo);
+        }
+        
+        return methodInfo;
+    }
+    
+    private GenericType createGenericType(Type type, GenericClassInfo classInfo) {
+        if (type == null) return null;
+        
+        String typeName = type.getName();
+        
+        if (classInfo != null) {
+            TypeVariableImpl typeVar = classInfo.getTypeVariable(typeName);
+            if (typeVar != null) {
+                return typeVar;
+            }
+        }
+        
+        if (!type.getTypeArguments().isEmpty()) {
+            List<GenericType> typeArgs = new ArrayList<>();
+            for (var typeArg : type.getTypeArguments()) {
+                typeArgs.add(createGenericTypeFromArgument(typeArg, classInfo));
+            }
+            
+            Class<?> rawType = tryLoadClass(typeName);
+            if (rawType != null) {
+                return new ParameterizedTypeImpl(rawType, typeArgs);
+            }
+            
+            return new ParameterizedTypeImpl(typeName, typeArgs);
+        }
+        
+        Class<?> rawType = tryLoadClass(typeName);
+        if (rawType != null) {
+            return new ClassTypeImpl(rawType);
+        }
+        
+        return new ClassTypeImpl(typeName);
+    }
+    
+    private GenericType createGenericTypeFromArgument(cn.langlang.javainterpreter.ast.type.TypeArgument typeArg, 
+                                                       GenericClassInfo classInfo) {
+        if (typeArg == null) return new ClassTypeImpl(Object.class);
+        
+        var wildcardKind = typeArg.getWildcardKind();
+        
+        switch (wildcardKind) {
+            case UNBOUNDED:
+                return WildcardTypeImpl.unbounded();
+            case EXTENDS:
+                GenericType extendsBound = createGenericType(typeArg.getBoundType(), classInfo);
+                return WildcardTypeImpl.extendsBound(extendsBound);
+            case SUPER:
+                GenericType superBound = createGenericType(typeArg.getBoundType(), classInfo);
+                return WildcardTypeImpl.superBound(superBound);
+            default:
+                return createGenericType(typeArg.getType(), classInfo);
+        }
+    }
+    
+    private Class<?> tryLoadClass(String typeName) {
+        try {
+            if (typeName.equals("int")) return int.class;
+            if (typeName.equals("long")) return long.class;
+            if (typeName.equals("short")) return short.class;
+            if (typeName.equals("byte")) return byte.class;
+            if (typeName.equals("char")) return char.class;
+            if (typeName.equals("boolean")) return boolean.class;
+            if (typeName.equals("float")) return float.class;
+            if (typeName.equals("double")) return double.class;
+            if (typeName.equals("void")) return void.class;
+            
+            if (typeName.equals("String")) return String.class;
+            if (typeName.equals("Integer")) return Integer.class;
+            if (typeName.equals("Long")) return Long.class;
+            if (typeName.equals("Double")) return Double.class;
+            if (typeName.equals("Boolean")) return Boolean.class;
+            if (typeName.equals("Object")) return Object.class;
+            if (typeName.equals("Class")) return Class.class;
+            
+            return Class.forName(typeName);
+        } catch (ClassNotFoundException e) {
+            return null;
+        }
+    }
+    
+    private void generateBridgeMethods(ScriptClass scriptClass) {
+        if (scriptClass.getGenericInfo() == null) return;
+        
+        List<ScriptMethod> bridges = TypeErasure.generateBridgeMethods(scriptClass, scriptClass.getGenericInfo());
+        for (ScriptMethod bridge : bridges) {
+            scriptClass.addMethod(bridge);
+            scriptClass.getGenericInfo().addBridgeMethod(bridge);
+        }
     }
     
     private void checkAbstractMethodsImplemented(ScriptClass scriptClass) {
@@ -394,43 +548,43 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
             interfaces.add(interpreter.resolveClass(iface));
         }
         
-        ScriptClass scriptClass = new ScriptClass(name, name, node.getModifiers(),
-                                                  null, interfaces, node);
+        ScriptEnum scriptEnum = new ScriptEnum(name, name, node.getModifiers(),
+                                                  interfaces, node);
         
-        interpreter.getGlobalEnv().defineClass(name, scriptClass);
-        interpreter.getLoadedClasses().put(name, scriptClass);
+        interpreter.getGlobalEnv().defineClass(name, scriptEnum);
+        interpreter.getLoadedClasses().put(name, scriptEnum);
         
         for (FieldDeclaration field : node.getFields()) {
             ScriptField scriptField = new ScriptField(
                 field.getName(), field.getModifiers(), field.getType(),
-                field.getInitializer(), scriptClass, field.getAnnotations());
-            scriptClass.addField(scriptField);
+                field.getInitializer(), scriptEnum, field.getAnnotations());
+            scriptEnum.addField(scriptField);
         }
         
         for (MethodDeclaration method : node.getMethods()) {
             ScriptMethod scriptMethod = new ScriptMethod(
                 method.getName(), method.getModifiers(), method.getReturnType(),
                 method.getParameters(), method.isVarArgs(), method.getBody(),
-                scriptClass, false, method.isDefault(), method.getAnnotations());
-            scriptClass.addMethod(scriptMethod);
+                scriptEnum, false, method.isDefault(), method.getAnnotations());
+            scriptEnum.addMethod(scriptMethod);
         }
         
         for (ConstructorDeclaration constructor : node.getConstructors()) {
             ScriptMethod scriptMethod = new ScriptMethod(
                 constructor.getName(), constructor.getModifiers(), null,
                 constructor.getParameters(), false, constructor.getBody(),
-                scriptClass, true, false, constructor.getAnnotations());
-            scriptClass.addConstructor(scriptMethod);
+                scriptEnum, true, false, constructor.getAnnotations());
+            scriptEnum.addConstructor(scriptMethod);
         }
         
         int ordinal = 0;
         for (EnumConstant constant : node.getConstants()) {
-            ScriptClass constantClass = scriptClass;
+            ScriptClass constantClass = scriptEnum;
             
             if (constant.getAnonymousClass() != null) {
                 ClassDeclaration anonClass = constant.getAnonymousClass();
                 constantClass = new ScriptClass(name + "$" + constant.getName(), name + "$" + constant.getName(),
-                    0, scriptClass, new ArrayList<>(), anonClass);
+                    0, scriptEnum, new ArrayList<>(), anonClass);
                 
                 for (FieldDeclaration field : anonClass.getFields()) {
                     ScriptField scriptField = new ScriptField(
@@ -452,7 +606,7 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
             enumObj.setField("name", constant.getName());
             enumObj.setField("ordinal", ordinal);
             
-            for (ScriptField field : scriptClass.getFields().values()) {
+            for (ScriptField field : scriptEnum.getFields().values()) {
                 if (!field.isStatic()) {
                     Object value = null;
                     if (field.getInitializer() != null) {
@@ -467,17 +621,65 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
                 for (cn.langlang.javainterpreter.ast.expression.Expression arg : constant.getArguments()) {
                     args.add(arg.accept(interpreter.getExpressionEvaluator()));
                 }
-                ScriptMethod constructor = interpreter.findConstructor(scriptClass, args);
+                ScriptMethod constructor = interpreter.findConstructor(scriptEnum, args);
                 if (constructor != null) {
                     interpreter.invokeMethod(enumObj, constructor, args);
                 }
+            } else if (!scriptEnum.getConstructors().isEmpty()) {
+                ScriptMethod defaultConstructor = interpreter.findConstructor(scriptEnum, new ArrayList<>());
+                if (defaultConstructor != null) {
+                    interpreter.invokeMethod(enumObj, defaultConstructor, new ArrayList<>());
+                }
             }
             
+            scriptEnum.addConstant(constant.getName(), enumObj, ordinal);
             interpreter.getGlobalEnv().defineVariable(constant.getName(), enumObj);
             ordinal++;
         }
         
+        generateEnumMethods(scriptEnum);
+        
         return null;
+    }
+    
+    private void generateEnumMethods(ScriptEnum scriptEnum) {
+        ScriptMethod valuesMethod = new ScriptMethod(
+            "values",
+            Modifier.PUBLIC | Modifier.STATIC,
+            new cn.langlang.javainterpreter.ast.type.Type(null, scriptEnum.getName() + "[]", null, 0, null),
+            new ArrayList<>(),
+            false,
+            null,
+            scriptEnum,
+            false,
+            false,
+            new ArrayList<>()
+        );
+        valuesMethod.setNativeImplementation(args -> scriptEnum.values());
+        scriptEnum.addMethod(valuesMethod);
+        
+        List<ParameterDeclaration> valueOfParams = new ArrayList<>();
+        valueOfParams.add(new ParameterDeclaration(
+            null, 0, new cn.langlang.javainterpreter.ast.type.Type(null, "String", null, 0, null), "name", false, new ArrayList<>()
+        ));
+        
+        ScriptMethod valueOfMethod = new ScriptMethod(
+            "valueOf",
+            Modifier.PUBLIC | Modifier.STATIC,
+            new cn.langlang.javainterpreter.ast.type.Type(null, scriptEnum.getName(), null, 0, null),
+            valueOfParams,
+            false,
+            null,
+            scriptEnum,
+            false,
+            false,
+            new ArrayList<>()
+        );
+        valueOfMethod.setNativeImplementation(args -> {
+            String enumName = (String) args[0];
+            return scriptEnum.valueOf(enumName);
+        });
+        scriptEnum.addMethod(valueOfMethod);
     }
     
     @Override

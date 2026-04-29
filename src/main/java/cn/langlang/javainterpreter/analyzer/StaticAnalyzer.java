@@ -66,8 +66,29 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
                 registerClass((ClassDeclaration) type);
             } else if (type instanceof InterfaceDeclaration) {
                 registerInterface((InterfaceDeclaration) type);
+            } else if (type instanceof EnumDeclaration) {
+                registerEnum((EnumDeclaration) type);
             }
         }
+    }
+    
+    private void registerEnum(EnumDeclaration node) {
+        ScriptClassInfo info = new ScriptClassInfo(node.getName(), node.getModifiers() | Modifier.ENUM);
+        info.setStatic(false);
+        
+        for (EnumConstant constant : node.getConstants()) {
+            importedClasses.add(constant.getName());
+        }
+        
+        for (FieldDeclaration field : node.getFields()) {
+            info.addField(field.getName(), field.getModifiers());
+        }
+        
+        for (MethodDeclaration method : node.getMethods()) {
+            info.addMethod(method.getName(), method.getModifiers(), method.getParameters());
+        }
+        
+        classes.put(node.getName(), info);
     }
     
     private void registerClass(ClassDeclaration node) {
@@ -178,6 +199,41 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
         }
         
         currentClass = previousClass;
+        return null;
+    }
+    
+    @Override
+    public Void visitEnumDeclaration(EnumDeclaration node) {
+        ScriptClassInfo previousClass = currentClass;
+        currentClass = classes.get(node.getName());
+        
+        for (EnumConstant constant : node.getConstants()) {
+            definedVariables.add(constant.getName());
+            if (constant.getAnonymousClass() != null) {
+                for (MethodDeclaration method : constant.getAnonymousClass().getMethods()) {
+                    method.accept(this);
+                }
+            }
+        }
+        
+        for (FieldDeclaration field : node.getFields()) {
+            field.accept(this);
+        }
+        
+        for (MethodDeclaration method : node.getMethods()) {
+            method.accept(this);
+        }
+        
+        for (ConstructorDeclaration constructor : node.getConstructors()) {
+            constructor.accept(this);
+        }
+        
+        currentClass = previousClass;
+        return null;
+    }
+    
+    @Override
+    public Void visitEnumConstant(EnumConstant node) {
         return null;
     }
     

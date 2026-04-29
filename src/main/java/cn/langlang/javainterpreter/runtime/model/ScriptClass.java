@@ -4,6 +4,8 @@ import cn.langlang.javainterpreter.ast.declaration.InitializerBlock;
 import cn.langlang.javainterpreter.ast.declaration.ParameterDeclaration;
 import cn.langlang.javainterpreter.ast.declaration.TypeDeclaration;
 import cn.langlang.javainterpreter.ast.type.Type;
+import cn.langlang.javainterpreter.ast.type.TypeParameter;
+import cn.langlang.javainterpreter.runtime.generics.*;
 import java.util.*;
 
 public class ScriptClass {
@@ -21,6 +23,10 @@ public class ScriptClass {
     private boolean initialized;
     private ScriptClass enclosingClass;
     
+    private List<TypeParameter> typeParameters;
+    private GenericClassInfo genericInfo;
+    private Map<String, GenericType> typeBindings;
+    
     public ScriptClass(String name, String qualifiedName, int modifiers, 
                       ScriptClass superClass, List<ScriptClass> interfaces,
                       TypeDeclaration astNode) {
@@ -36,6 +42,8 @@ public class ScriptClass {
         this.instanceInitializers = new ArrayList<>();
         this.astNode = astNode;
         this.initialized = false;
+        this.typeParameters = new ArrayList<>();
+        this.typeBindings = new HashMap<>();
     }
     
     public String getName() { return name; }
@@ -52,12 +60,55 @@ public class ScriptClass {
     public boolean isInitialized() { return initialized; }
     public ScriptClass getEnclosingClass() { return enclosingClass; }
     
+    public List<TypeParameter> getTypeParameters() { return typeParameters; }
+    public GenericClassInfo getGenericInfo() { return genericInfo; }
+    public Map<String, GenericType> getTypeBindings() { return typeBindings; }
+    
     public void setInitialized(boolean initialized) {
         this.initialized = initialized;
     }
     
     public void setEnclosingClass(ScriptClass enclosingClass) {
         this.enclosingClass = enclosingClass;
+    }
+    
+    public void setTypeParameters(List<TypeParameter> typeParameters) {
+        this.typeParameters = typeParameters != null ? new ArrayList<>(typeParameters) : new ArrayList<>();
+    }
+    
+    public void setGenericInfo(GenericClassInfo genericInfo) {
+        this.genericInfo = genericInfo;
+    }
+    
+    public void bindTypeParameter(String name, GenericType type) {
+        typeBindings.put(name, type);
+        if (genericInfo != null) {
+            genericInfo.bindTypeVariable(name, type);
+        }
+    }
+    
+    public GenericType getTypeBinding(String name) {
+        return typeBindings.get(name);
+    }
+    
+    public boolean isGenericClass() {
+        return typeParameters != null && !typeParameters.isEmpty();
+    }
+    
+    public ScriptClass withTypeBindings(Map<String, GenericType> bindings) {
+        ScriptClass copy = new ScriptClass(name, qualifiedName, modifiers, superClass, interfaces, astNode);
+        copy.fields.putAll(this.fields);
+        copy.methods.putAll(this.methods);
+        copy.constructors.addAll(this.constructors);
+        copy.staticInitializers.addAll(this.staticInitializers);
+        copy.instanceInitializers.addAll(this.instanceInitializers);
+        copy.initialized = this.initialized;
+        copy.enclosingClass = this.enclosingClass;
+        copy.typeParameters = this.typeParameters;
+        copy.genericInfo = this.genericInfo;
+        copy.typeBindings.putAll(this.typeBindings);
+        copy.typeBindings.putAll(bindings);
+        return copy;
     }
     
     public void addField(ScriptField field) {
