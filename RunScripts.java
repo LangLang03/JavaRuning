@@ -1,5 +1,5 @@
-import cn.langlang.javainterpreter.Main;
-import cn.langlang.javainterpreter.api.JavaInterpreter;
+import cn.langlang.javanter.Main;
+import cn.langlang.javanter.api.JavaInterpreter;
 import java.nio.file.*;
 
 public class RunScripts {

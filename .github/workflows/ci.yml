@@ -84,7 +84,7 @@ jobs:
           if [ -f "$script" ]; then
             echo "Analyzing $script..."
             java -cp build/classes/java/main \
-              cn.langlang.javainterpreter.Main -lint "$script" >> test-results/lint-output.txt 2>&1 || true
+              cn.langlang.javanter.Main -lint "$script" >> test-results/lint-output.txt 2>&1 || true
           fi
         done
       continue-on-error: true

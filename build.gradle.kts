@@ -31,12 +31,12 @@ tasks.jacocoTestReport {
 }
 
 application {
-    mainClass.set("cn.langlang.javainterpreter.Main")
+    mainClass.set("cn.langlang.javanter.Main")
 }
 
 tasks.jar {
     manifest {
-        attributes["Main-Class"] = "cn.langlang.javainterpreter.Main"
+        attributes["Main-Class"] = "cn.langlang.javanter.Main"
     }
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
