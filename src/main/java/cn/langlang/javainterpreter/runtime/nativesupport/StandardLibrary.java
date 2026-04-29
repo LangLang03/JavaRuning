@@ -37,6 +37,18 @@ public class StandardLibrary {
         staticImportRegistry.registerSystemMembers();
         staticImportRegistry.registerClass("Math", Math.class);
         staticImportRegistry.registerClass("System", System.class);
+        
+        registerStringMethods();
+        registerListMethods();
+        registerSetMethods();
+        registerMapMethods();
+        registerStreamMethods();
+        registerOptionalMethods();
+        registerPrimitiveMethods();
+        registerThrowableMethods();
+        registerIOClasses();
+        registerNetworkClasses();
+        registerConstructors();
     }
     
     public void initializeStandardClasses(Environment env) {
@@ -221,6 +233,11 @@ public class StandardLibrary {
         });
         streamMethods.put("collect", (target, name, args) -> {
             Object collector = args.get(0);
+            if (collector instanceof java.util.stream.Collector) {
+                @SuppressWarnings("unchecked")
+                java.util.stream.Collector<Object, ?, ?> c = (java.util.stream.Collector<Object, ?, ?>) collector;
+                return ((Stream<?>) target).collect(c);
+            }
             if (collector instanceof Map) {
                 Map<?, ?> map = (Map<?, ?>) collector;
                 if (map.containsKey("type")) {
@@ -917,6 +934,7 @@ public class StandardLibrary {
         public Object getField(String name) {
             if (name.equals("out")) return System.out;
             if (name.equals("err")) return System.err;
+            if (name.equals("in")) return System.in;
             return null;
         }
         

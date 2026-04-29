@@ -1,11 +1,22 @@
 package cn.langlang.javainterpreter.runtime.model;
 
+import cn.langlang.javainterpreter.interpreter.Interpreter;
 import java.util.*;
 
 public class RuntimeObject {
+    private static final ThreadLocal<Interpreter> currentInterpreter = new ThreadLocal<>();
+    
     private final ScriptClass scriptClass;
     private final Map<String, Object> fields;
     private Map<String, Object> capturedVariables;
+    
+    public static void setCurrentInterpreter(Interpreter interpreter) {
+        currentInterpreter.set(interpreter);
+    }
+    
+    public static Interpreter getCurrentInterpreter() {
+        return currentInterpreter.get();
+    }
     
     public RuntimeObject(ScriptClass scriptClass) {
         this.scriptClass = scriptClass;
@@ -41,5 +52,25 @@ public class RuntimeObject {
     
     public Map<String, Object> getCapturedVariables() {
         return capturedVariables;
+    }
+    
+    @Override
+    public String toString() {
+        Interpreter interpreter = currentInterpreter.get();
+        if (interpreter != null) {
+            ScriptMethod toStringMethod = scriptClass.getMethod("toString", Collections.emptyList());
+            if (toStringMethod != null) {
+                try {
+                    Object result = interpreter.invokeMethod(this, toStringMethod, Collections.emptyList());
+                    if (result != null) {
+                        return result.toString();
+                    }
+                    return "null";
+                } catch (Exception e) {
+                    return getClass().getName() + "@" + Integer.toHexString(hashCode());
+                }
+            }
+        }
+        return getClass().getName() + "@" + Integer.toHexString(hashCode());
     }
 }

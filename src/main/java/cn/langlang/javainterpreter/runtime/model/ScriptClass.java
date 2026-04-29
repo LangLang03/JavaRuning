@@ -95,9 +95,28 @@ public class ScriptClass {
             result.addAll(localMethods);
         }
         if (superClass != null) {
-            result.addAll(superClass.getMethods(name));
+            List<ScriptMethod> superMethods = superClass.getMethods(name);
+            for (ScriptMethod superMethod : superMethods) {
+                if (!isMethodOverridden(superMethod, localMethods)) {
+                    result.add(superMethod);
+                }
+            }
         }
         return result;
+    }
+    
+    private boolean isMethodOverridden(ScriptMethod superMethod, List<ScriptMethod> localMethods) {
+        if (localMethods == null) {
+            return false;
+        }
+        for (ScriptMethod localMethod : localMethods) {
+            if (localMethod.getName().equals(superMethod.getName()) &&
+                localMethod.getParameters().size() == superMethod.getParameters().size() &&
+                localMethod.isVarArgs() == superMethod.isVarArgs()) {
+                return true;
+            }
+        }
+        return false;
     }
     
     public ScriptMethod getMethod(String name, List<Object> args) {

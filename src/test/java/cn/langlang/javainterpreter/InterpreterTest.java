@@ -241,4 +241,16 @@ public class InterpreterTest {
         String source = "public class Test { public static void main(String[] args) { Box<String> box = new Box<>(); box.set(\"hello\"); System.out.println(box.get()); } } class Box<T> { private T value; public void set(T value) { this.value = value; } public T get() { return value; } }";
         assertDoesNotThrow(() -> interpreter.execute(source));
     }
+    
+    @Test
+    public void testMethodOverrideToString() {
+        String source = "public class Test { public static void main(String[] args) { User user = new User(\"001\", \"Alice\"); String result = user.toString(); System.out.println(result); } } class User { private String id; private String name; public User(String id, String name) { this.id = id; this.name = name; } @Override public String toString() { return \"User[id=\" + id + \", name=\" + name + \"]\"; } }";
+        assertDoesNotThrow(() -> interpreter.execute(source));
+    }
+    
+    @Test
+    public void testMethodOverrideWithSuper() {
+        String source = "public class Test { public static void main(String[] args) { Child child = new Child(); System.out.println(child.getValue()); System.out.println(child.toString()); } } class Parent { public String getValue() { return \"parent\"; } @Override public String toString() { return \"Parent[]\"; } } class Child extends Parent { @Override public String getValue() { return \"child\"; } @Override public String toString() { return \"Child[]\"; } }";
+        assertDoesNotThrow(() -> interpreter.execute(source));
+    }
 }

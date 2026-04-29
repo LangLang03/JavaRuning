@@ -34,6 +34,7 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
     private final ExpressionEvaluator expressionEvaluator;
     
     public Interpreter() {
+        RuntimeObject.setCurrentInterpreter(this);
         this.globalEnv = new Environment();
         this.currentEnvHolder = new ThreadLocal<>();
         this.currentEnvHolder.set(globalEnv);
