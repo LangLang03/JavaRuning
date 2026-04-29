@@ -517,6 +517,74 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
             Object value = null;
             if (declarator.getInitializer() != null) {
                 value = declarator.getInitializer().accept(interpreter.getExpressionEvaluator());
+                
+                if (value instanceof Object[] && node.getType() != null) {
+                    String typeName = node.getType().getName();
+                    int arrayDims = node.getType().getArrayDimensions();
+                    
+                    if (arrayDims > 0) {
+                        Object[] objArr = (Object[]) value;
+                        
+                        switch (typeName) {
+                            case "int":
+                                int[] intArr = new int[objArr.length];
+                                for (int i = 0; i < objArr.length; i++) {
+                                    intArr[i] = objArr[i] != null ? ((Number) objArr[i]).intValue() : 0;
+                                }
+                                value = intArr;
+                                break;
+                            case "long":
+                                long[] longArr = new long[objArr.length];
+                                for (int i = 0; i < objArr.length; i++) {
+                                    longArr[i] = objArr[i] != null ? ((Number) objArr[i]).longValue() : 0L;
+                                }
+                                value = longArr;
+                                break;
+                            case "double":
+                                double[] doubleArr = new double[objArr.length];
+                                for (int i = 0; i < objArr.length; i++) {
+                                    doubleArr[i] = objArr[i] != null ? ((Number) objArr[i]).doubleValue() : 0.0;
+                                }
+                                value = doubleArr;
+                                break;
+                            case "float":
+                                float[] floatArr = new float[objArr.length];
+                                for (int i = 0; i < objArr.length; i++) {
+                                    floatArr[i] = objArr[i] != null ? ((Number) objArr[i]).floatValue() : 0.0f;
+                                }
+                                value = floatArr;
+                                break;
+                            case "boolean":
+                                boolean[] boolArr = new boolean[objArr.length];
+                                for (int i = 0; i < objArr.length; i++) {
+                                    boolArr[i] = objArr[i] != null && (Boolean) objArr[i];
+                                }
+                                value = boolArr;
+                                break;
+                            case "char":
+                                char[] charArr = new char[objArr.length];
+                                for (int i = 0; i < objArr.length; i++) {
+                                    charArr[i] = objArr[i] != null ? (Character) objArr[i] : '\0';
+                                }
+                                value = charArr;
+                                break;
+                            case "byte":
+                                byte[] byteArr = new byte[objArr.length];
+                                for (int i = 0; i < objArr.length; i++) {
+                                    byteArr[i] = objArr[i] != null ? ((Number) objArr[i]).byteValue() : 0;
+                                }
+                                value = byteArr;
+                                break;
+                            case "short":
+                                short[] shortArr = new short[objArr.length];
+                                for (int i = 0; i < objArr.length; i++) {
+                                    shortArr[i] = objArr[i] != null ? ((Number) objArr[i]).shortValue() : 0;
+                                }
+                                value = shortArr;
+                                break;
+                        }
+                    }
+                }
             }
             interpreter.getCurrentEnv().defineVariable(declarator.getName(), value);
         }

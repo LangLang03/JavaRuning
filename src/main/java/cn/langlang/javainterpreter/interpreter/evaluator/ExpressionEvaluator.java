@@ -538,6 +538,26 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
             }
         }
         
+        if (target instanceof Class) {
+            Class<?> clazz = (Class<?>) target;
+            try {
+                java.lang.reflect.Field field = clazz.getField(node.getFieldName());
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                    return field.get(null);
+                }
+            } catch (NoSuchFieldException e) {
+            } catch (IllegalAccessException e) {
+            }
+            try {
+                for (java.lang.reflect.Field field : clazz.getFields()) {
+                    if (field.getName().equals(node.getFieldName())) {
+                        return field.get(null);
+                    }
+                }
+            } catch (Exception e) {
+            }
+        }
+        
         if (target instanceof RuntimeObject) {
             RuntimeObject obj = (RuntimeObject) target;
             return obj.getField(node.getFieldName());

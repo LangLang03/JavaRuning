@@ -579,10 +579,6 @@ public class StandardLibrary {
     
     private Object invokeByReflection(Object target, String methodName, List<Object> args) {
         try {
-            Class<?>[] paramTypes = args.stream()
-                .map(arg -> arg != null ? arg.getClass() : Object.class)
-                .toArray(Class<?>[]::new);
-            
             Class<?> targetClass = target.getClass();
             
             Set<Class<?>> visitedInterfaces = new HashSet<>();
@@ -590,48 +586,39 @@ public class StandardLibrary {
             collectAllInterfaces(targetClass, allInterfaces, visitedInterfaces);
             
             for (Class<?> iface : allInterfaces) {
-                try {
-                    java.lang.reflect.Method method = iface.getMethod(methodName, paramTypes);
-                    method.setAccessible(true);
-                    return method.invoke(target, args.toArray());
-                } catch (NoSuchMethodException e) {
-                    for (java.lang.reflect.Method method : iface.getMethods()) {
-                        if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
-                            try {
-                                method.setAccessible(true);
-                                return method.invoke(target, args.toArray());
-                            } catch (Exception ex) {
-                                continue;
-                            }
+                for (java.lang.reflect.Method method : iface.getMethods()) {
+                    if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
+                        try {
+                            method.setAccessible(true);
+                            Object[] convertedArgs = convertArgsForMethod(method, args);
+                            return method.invoke(target, convertedArgs);
+                        } catch (Exception ex) {
+                            continue;
                         }
                     }
                 }
             }
             
-            try {
-                java.lang.reflect.Method method = targetClass.getMethod(methodName, paramTypes);
-                method.setAccessible(true);
-                return method.invoke(target, args.toArray());
-            } catch (NoSuchMethodException e) {
-                for (java.lang.reflect.Method method : targetClass.getMethods()) {
-                    if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
-                        try {
-                            method.setAccessible(true);
-                            return method.invoke(target, args.toArray());
-                        } catch (Exception ex) {
-                            continue;
-                        }
+            for (java.lang.reflect.Method method : targetClass.getMethods()) {
+                if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
+                    try {
+                        method.setAccessible(true);
+                        Object[] convertedArgs = convertArgsForMethod(method, args);
+                        return method.invoke(target, convertedArgs);
+                    } catch (Exception ex) {
+                        continue;
                     }
                 }
-                
-                for (java.lang.reflect.Method method : targetClass.getDeclaredMethods()) {
-                    if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
-                        try {
-                            method.setAccessible(true);
-                            return method.invoke(target, args.toArray());
-                        } catch (Exception ex) {
-                            continue;
-                        }
+            }
+            
+            for (java.lang.reflect.Method method : targetClass.getDeclaredMethods()) {
+                if (method.getName().equals(methodName) && method.getParameterCount() == args.size()) {
+                    try {
+                        method.setAccessible(true);
+                        Object[] convertedArgs = convertArgsForMethod(method, args);
+                        return method.invoke(target, convertedArgs);
+                    } catch (Exception ex) {
+                        continue;
                     }
                 }
             }
@@ -1316,6 +1303,60 @@ public class StandardLibrary {
                         converted[i] = arr;
                     } else {
                         converted[i] = list.toArray();
+                    }
+                } else if (arg instanceof Object[]) {
+                    Object[] objArr = (Object[]) arg;
+                    Class<?> componentType = paramType.getComponentType();
+                    if (componentType == int.class) {
+                        int[] arr = new int[objArr.length];
+                        for (int j = 0; j < objArr.length; j++) {
+                            arr[j] = objArr[j] != null ? ((Number) objArr[j]).intValue() : 0;
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == long.class) {
+                        long[] arr = new long[objArr.length];
+                        for (int j = 0; j < objArr.length; j++) {
+                            arr[j] = objArr[j] != null ? ((Number) objArr[j]).longValue() : 0L;
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == double.class) {
+                        double[] arr = new double[objArr.length];
+                        for (int j = 0; j < objArr.length; j++) {
+                            arr[j] = objArr[j] != null ? ((Number) objArr[j]).doubleValue() : 0.0;
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == float.class) {
+                        float[] arr = new float[objArr.length];
+                        for (int j = 0; j < objArr.length; j++) {
+                            arr[j] = objArr[j] != null ? ((Number) objArr[j]).floatValue() : 0.0f;
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == boolean.class) {
+                        boolean[] arr = new boolean[objArr.length];
+                        for (int j = 0; j < objArr.length; j++) {
+                            arr[j] = objArr[j] != null && (Boolean) objArr[j];
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == char.class) {
+                        char[] arr = new char[objArr.length];
+                        for (int j = 0; j < objArr.length; j++) {
+                            arr[j] = objArr[j] != null ? (Character) objArr[j] : '\0';
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == byte.class) {
+                        byte[] arr = new byte[objArr.length];
+                        for (int j = 0; j < objArr.length; j++) {
+                            arr[j] = objArr[j] != null ? ((Number) objArr[j]).byteValue() : 0;
+                        }
+                        converted[i] = arr;
+                    } else if (componentType == short.class) {
+                        short[] arr = new short[objArr.length];
+                        for (int j = 0; j < objArr.length; j++) {
+                            arr[j] = objArr[j] != null ? ((Number) objArr[j]).shortValue() : 0;
+                        }
+                        converted[i] = arr;
+                    } else {
+                        converted[i] = arg;
                     }
                 } else {
                     converted[i] = arg;

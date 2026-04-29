@@ -60,7 +60,18 @@ public class ConstructorRegistry {
                 Object[] argsArray = args.toArray();
                 
                 for (Constructor<?> constructor : clazz.getConstructors()) {
-                    if (constructor.getParameterCount() == args.size()) {
+                    if (constructor.isVarArgs()) {
+                        int fixedParams = constructor.getParameterCount() - 1;
+                        if (args.size() >= fixedParams) {
+                            try {
+                                constructor.setAccessible(true);
+                                Object[] convertedArgs = convertArgsForVarargsConstructor(constructor, argsArray);
+                                return constructor.newInstance(convertedArgs);
+                            } catch (Exception e) {
+                                continue;
+                            }
+                        }
+                    } else if (constructor.getParameterCount() == args.size()) {
                         try {
                             constructor.setAccessible(true);
                             Object[] convertedArgs = convertArgsForConstructor(constructor, argsArray);
@@ -72,7 +83,18 @@ public class ConstructorRegistry {
                 }
                 
                 for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
-                    if (constructor.getParameterCount() == args.size()) {
+                    if (constructor.isVarArgs()) {
+                        int fixedParams = constructor.getParameterCount() - 1;
+                        if (args.size() >= fixedParams) {
+                            try {
+                                constructor.setAccessible(true);
+                                Object[] convertedArgs = convertArgsForVarargsConstructor(constructor, argsArray);
+                                return constructor.newInstance(convertedArgs);
+                            } catch (Exception e) {
+                                continue;
+                            }
+                        }
+                    } else if (constructor.getParameterCount() == args.size()) {
                         try {
                             constructor.setAccessible(true);
                             Object[] convertedArgs = convertArgsForConstructor(constructor, argsArray);
@@ -156,6 +178,56 @@ public class ConstructorRegistry {
         }
         
         return converted;
+    }
+    
+    private Object[] convertArgsForVarargsConstructor(Constructor<?> constructor, Object[] args) {
+        Class<?>[] paramTypes = constructor.getParameterTypes();
+        int fixedParams = paramTypes.length - 1;
+        Object[] converted = new Object[paramTypes.length];
+        
+        for (int i = 0; i < fixedParams; i++) {
+            Object arg = args[i];
+            Class<?> paramType = paramTypes[i];
+            converted[i] = convertSingleArg(arg, paramType);
+        }
+        
+        Class<?> varargType = paramTypes[fixedParams];
+        Class<?> componentType = varargType.getComponentType();
+        int varargCount = args.length - fixedParams;
+        Object varargArray = java.lang.reflect.Array.newInstance(componentType, varargCount);
+        
+        for (int i = 0; i < varargCount; i++) {
+            Object arg = args[fixedParams + i];
+            Object convertedArg = convertSingleArg(arg, componentType);
+            java.lang.reflect.Array.set(varargArray, i, convertedArg);
+        }
+        converted[fixedParams] = varargArray;
+        
+        return converted;
+    }
+    
+    private Object convertSingleArg(Object arg, Class<?> paramType) {
+        if (arg == null) {
+            return null;
+        } else if (paramType == int.class) {
+            return ((Number) arg).intValue();
+        } else if (paramType == long.class) {
+            return ((Number) arg).longValue();
+        } else if (paramType == double.class) {
+            return ((Number) arg).doubleValue();
+        } else if (paramType == float.class) {
+            return ((Number) arg).floatValue();
+        } else if (paramType == boolean.class) {
+            return arg;
+        } else if (paramType == char.class) {
+            return arg;
+        } else if (paramType == byte.class) {
+            return ((Number) arg).byteValue();
+        } else if (paramType == short.class) {
+            return ((Number) arg).shortValue();
+        } else {
+            return arg;
+        }
     }
     
     public boolean hasConstructor(String typeName) {
