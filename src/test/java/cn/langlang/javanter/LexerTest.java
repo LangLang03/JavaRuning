@@ -253,4 +253,47 @@ public class LexerTest {
         assertEquals(TokenType.NULL_LITERAL, tokens.get(0).getType());
         assertNull(tokens.get(0).getLiteral());
     }
+    
+    @Test
+    public void testNestedGenericTokens() {
+        String source = "Box<Box<Box<String>>> deep";
+        Lexer lexer = new Lexer(source);
+        List<Token> tokens = lexer.scanTokens();
+        
+        assertEquals(TokenType.IDENTIFIER, tokens.get(0).getType());
+        assertEquals("Box", tokens.get(0).getLexeme());
+        assertEquals(TokenType.LT, tokens.get(1).getType());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(2).getType());
+        assertEquals("Box", tokens.get(2).getLexeme());
+        assertEquals(TokenType.LT, tokens.get(3).getType());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(4).getType());
+        assertEquals("Box", tokens.get(4).getLexeme());
+        assertEquals(TokenType.LT, tokens.get(5).getType());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(6).getType());
+        assertEquals("String", tokens.get(6).getLexeme());
+        assertEquals(TokenType.URSHIFT, tokens.get(7).getType());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(8).getType());
+        assertEquals("deep", tokens.get(8).getLexeme());
+    }
+    
+    @Test
+    public void testFourLevelNestedGenericTokens() {
+        String source = "Box<Box<Box<Box<String>>>> four";
+        Lexer lexer = new Lexer(source);
+        List<Token> tokens = lexer.scanTokens();
+        
+        int urshiftIndex = -1;
+        int gtIndex = -1;
+        for (int i = 0; i < tokens.size(); i++) {
+            if (tokens.get(i).getType() == TokenType.URSHIFT) {
+                urshiftIndex = i;
+            }
+            if (tokens.get(i).getType() == TokenType.GT && gtIndex == -1) {
+                gtIndex = i;
+            }
+        }
+        
+        assertTrue(urshiftIndex > 0, "Should have URSHIFT token");
+        assertTrue(gtIndex > urshiftIndex, "GT should come after URSHIFT");
+    }
 }

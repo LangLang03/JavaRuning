@@ -98,7 +98,6 @@ public class LambdaExpressionTest {
     }
     
     @Test
-    @Disabled("Nested lambdas require advanced parser support")
     public void testNestedLambdas() {
         String source = "import java.util.function.Function; public class Test { public static void main(String[] args) { Function<Integer, Function<Integer, Integer>> add = x -> y -> x + y; System.out.println(add.apply(3).apply(4)); } }";
         assertDoesNotThrow(() -> interpreter.execute(source));

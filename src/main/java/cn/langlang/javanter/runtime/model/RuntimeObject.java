@@ -3,6 +3,29 @@ package cn.langlang.javanter.runtime.model;
 import cn.langlang.javanter.interpreter.Interpreter;
 import java.util.*;
 
+/**
+ * Represents an instance of a class during interpretation.
+ *
+ * <p>RuntimeObject is the runtime representation of a Java object. It holds:</p>
+ * <ul>
+ *   <li><b>scriptClass</b> - The ScriptClass definition describing this object's structure</li>
+ *   <li><b>fields</b> - A map of field names to their current values for this instance</li>
+ *   <li><b>capturedVariables</b> - Variables captured from enclosing scopes for lambda/closure support</li>
+ * </ul>
+ *
+ * <p>Thread-local interpreter reference:</p>
+ * <p>The current interpreter is stored in a ThreadLocal to support
+ * proper interpreter state management in multi-threaded scenarios.</p>
+ *
+ * <p>toString() behavior:</p>
+ * <p>Returns the enum name for enum instances, or attempts to call
+ * the class's toString() method. Falls back to the default
+ * Object.toString() representation if no custom toString exists.</p>
+ *
+ * @see ScriptClass
+ * @see Interpreter
+ * @author Javanter Development Team
+ */
 public class RuntimeObject {
     private static final ThreadLocal<Interpreter> currentInterpreter = new ThreadLocal<>();
     

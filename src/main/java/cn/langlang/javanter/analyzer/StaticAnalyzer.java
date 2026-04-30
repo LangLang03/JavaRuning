@@ -10,6 +10,36 @@ import cn.langlang.javanter.ast.type.Type;
 import cn.langlang.javanter.parser.Modifier;
 import java.util.*;
 
+/**
+ * Static analyzer (linter) for Java code.
+ *
+ * <p>This class performs static analysis on Java source code represented as an AST
+ * without executing it. It detects common programming errors such as:</p>
+ * <ul>
+ *   <li>Unresolved symbol references</li>
+ *   <li>Access to non-static members from static context</li>
+ *   <li>Invalid use of {@code this} and {@code super} keywords</li>
+ *   <li>Calling non-static methods from static context</li>
+ *   <li>Accessing non-static fields from static context</li>
+ * </ul>
+ *
+ * <p>Analysis is performed in two passes:</p>
+ * <ol>
+ *   <li><b>First pass</b> - Collects all type declarations (classes, interfaces, enums)
+ *       and builds a symbol table</li>
+ *   <li><b>Second pass</b> - Visits each node and validates usage against the symbol table</li>
+ * </ol>
+ *
+ * <p>Error reporting:</p>
+ * <ul>
+ *   <li>Errors halt execution and must be fixed before running</li>
+ *   <li>Warnings are informational but don't prevent execution</li>
+ *   <li>Both include file location, class, and method context</li>
+ * </ul>
+ *
+ * @see AnalysisResult
+ * @author Javanter Development Team
+ */
 public class StaticAnalyzer extends AbstractASTVisitor<Void> {
     private final List<LintError> errors;
     private final List<LintWarning> warnings;
@@ -699,7 +729,13 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
         }
         return null;
     }
-    
+
+    /**
+     * Represents a static analysis error that prevents code execution.
+     *
+     * <p>Errors include information about location and context to help
+     * developers quickly identify and fix issues.</p>
+     */
     public static class LintError {
         private final int line;
         private final int column;
@@ -742,7 +778,13 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
             return sb.toString();
         }
     }
-    
+
+    /**
+     * Represents a static analysis warning that doesn't prevent execution.
+     *
+     * <p>Warnings indicate potential issues or non-optimal code patterns
+     * that should be reviewed by the developer.</p>
+     */
     public static class LintWarning {
         private final int line;
         private final int column;
@@ -778,7 +820,16 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
             return sb.toString();
         }
     }
-    
+
+    /**
+     * Container for the results of static analysis.
+     *
+     * <p>Contains all errors and warnings found during analysis and provides
+     * utility methods to check analysis status and print formatted reports.</p>
+     *
+     * @see LintError
+     * @see LintWarning
+     */
     public static class AnalysisResult {
         private final List<LintError> errors;
         private final List<LintWarning> warnings;

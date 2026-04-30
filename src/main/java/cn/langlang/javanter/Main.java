@@ -8,8 +8,38 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 
+/**
+ * Main entry point for the JavaInterpreter command-line interface.
+ * This class provides a CLI wrapper around the JavaInterpreter API,
+ * allowing users to execute Java source code files directly from the command line.
+ *
+ * <p>Supported command-line options:</p>
+ * <ul>
+ *   <li>{@code -lint} - Perform static analysis only without execution</li>
+ *   <li>{@code -cp <path>} - Additional classpath for imports</li>
+ *   <li>{@code -main <class>} - Explicitly specify the main class name</li>
+ *   <li>{@code -v, --version} - Display version information</li>
+ *   <li>{@code -h, --help} - Show help message</li>
+ * </ul>
+ *
+ * <p>Usage examples:</p>
+ * <pre>
+ *   java Main MyScript.java
+ *   java Main -lint MyScript.java
+ *   java Main -cp /path/to/libs MyScript.java
+ * </pre>
+ *
+ * @author Javanter Development Team
+ * @version 1.0
+ */
 public class Main {
+    /** Current version of the JavaInterpreter */
     private static final String VERSION = "1.0";
+
+    /**
+     * Usage message displayed when the program is invoked without arguments
+     * or with the -h/--help flag.
+     */
     private static final String USAGE =
         "Usage: java Main [options] <file.java>...\n" +
         "Options:\n" +
@@ -21,6 +51,23 @@ public class Main {
         "Note: Static analysis is always performed before execution.\n" +
         "First file is treated as main if it contains main method.";
 
+    /**
+     * Main entry point for the JavaInterpreter CLI.
+     *
+     * <p>This method processes command-line arguments, loads and analyzes Java source files,
+     * and executes the main method of the specified script. The execution flow is:</p>
+     * <ol>
+     *   <li>Parse command-line arguments</li>
+     *   <li>Validate input files exist</li>
+     *   <li>Create a JavaInterpreter instance</li>
+     *   <li>Run static analysis on all source files</li>
+     *   <li>If not lint-only mode, load and execute the code</li>
+     *   <li>Invoke the main method and print the result</li>
+     * </ol>
+     *
+     * @param args Command-line arguments controlling program behavior
+     * @throws Exception if file I/O errors occur or execution fails
+     */
     public static void main(String[] args) throws Exception {
         if (args.length == 0) {
             System.out.println(USAGE);

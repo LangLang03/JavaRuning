@@ -223,4 +223,131 @@ public class GenericsTest {
             "}";
         assertDoesNotThrow(() -> interpreter.execute(source));
     }
+    
+    @Test
+    public void testDeepNestedGenericTypes() {
+        String source = 
+            "class Box<T> {" +
+            "    private T value;" +
+            "    public void set(T v) { this.value = v; }" +
+            "    public T get() { return value; }" +
+            "}" +
+            "public class Test {" +
+            "    public static void main(String[] args) {" +
+            "        Box<Box<Box<String>>> deep = new Box<Box<Box<String>>>();" +
+            "        Box<Box<String>> middle = new Box<Box<String>>();" +
+            "        Box<String> inner = new Box<String>();" +
+            "        inner.set(\"deep nested\");" +
+            "        middle.set(inner);" +
+            "        deep.set(middle);" +
+            "        System.out.println(deep.get().get().get());" +
+            "    }" +
+            "}";
+        assertDoesNotThrow(() -> interpreter.execute(source));
+    }
+    
+    @Test
+    public void testTwoLevelNestedGenericTypes() {
+        String source = 
+            "class Box<T> {" +
+            "    private T value;" +
+            "    public void set(T v) { this.value = v; }" +
+            "    public T get() { return value; }" +
+            "}" +
+            "public class Test {" +
+            "    public static void main(String[] args) {" +
+            "        Box<Box<String>> a = new Box<Box<String>>();" +
+            "        a.set(new Box<String>());" +
+            "        a.get().set(\"test\");" +
+            "        System.out.println(a.get().get());" +
+            "    }" +
+            "}";
+        assertDoesNotThrow(() -> interpreter.execute(source));
+    }
+    
+    @Test
+    public void testThreeLevelNestedGenericTypes() {
+        String source = 
+            "class Box<T> {" +
+            "    private T value;" +
+            "    public void set(T v) { this.value = v; }" +
+            "    public T get() { return value; }" +
+            "}" +
+            "public class Test {" +
+            "    public static void main(String[] args) {" +
+            "        Box<Box<Box<String>>> a = new Box<Box<Box<String>>>();" +
+            "        a.set(new Box<Box<String>>());" +
+            "        a.get().set(new Box<String>());" +
+            "        a.get().get().set(\"three levels\");" +
+            "        System.out.println(a.get().get().get());" +
+            "    }" +
+            "}";
+        assertDoesNotThrow(() -> interpreter.execute(source));
+    }
+    
+    @Test
+    public void testFourLevelNestedGenericTypes() {
+        String source = 
+            "class Box<T> {" +
+            "    private T value;" +
+            "    public void set(T v) { this.value = v; }" +
+            "    public T get() { return value; }" +
+            "}" +
+            "public class Test {" +
+            "    public static void main(String[] args) {" +
+            "        Box<Box<Box<Box<String>>>> four = new Box<Box<Box<Box<String>>>>();" +
+            "        Box<Box<Box<String>>> three = new Box<Box<Box<String>>>();" +
+            "        Box<Box<String>> two = new Box<Box<String>>();" +
+            "        Box<String> one = new Box<String>();" +
+            "        one.set(\"four levels\");" +
+            "        two.set(one);" +
+            "        three.set(two);" +
+            "        four.set(three);" +
+            "        System.out.println(four.get().get().get().get());" +
+            "    }" +
+            "}";
+        assertDoesNotThrow(() -> interpreter.execute(source));
+    }
+    
+    @Test
+    public void testFiveLevelNestedGenericTypes() {
+        String source = 
+            "class Box<T> {" +
+            "    private T value;" +
+            "    public void set(T v) { this.value = v; }" +
+            "    public T get() { return value; }" +
+            "}" +
+            "public class Test {" +
+            "    public static void main(String[] args) {" +
+            "        Box<Box<Box<Box<Box<String>>>>> five = new Box<Box<Box<Box<Box<String>>>>>();" +
+            "        Box<Box<Box<Box<String>>>> four = new Box<Box<Box<Box<String>>>>();" +
+            "        Box<Box<Box<String>>> three = new Box<Box<Box<String>>>();" +
+            "        Box<Box<String>> two = new Box<Box<String>>();" +
+            "        Box<String> one = new Box<String>();" +
+            "        one.set(\"five levels\");" +
+            "        two.set(one);" +
+            "        three.set(two);" +
+            "        four.set(three);" +
+            "        five.set(four);" +
+            "        System.out.println(five.get().get().get().get().get());" +
+            "    }" +
+            "}";
+        assertDoesNotThrow(() -> interpreter.execute(source));
+    }
+    
+    @Test
+    public void testSixLevelNestedGenericTypes() {
+        String source = 
+            "class Box<T> {" +
+            "    private T value;" +
+            "    public void set(T v) { this.value = v; }" +
+            "    public T get() { return value; }" +
+            "}" +
+            "public class Test {" +
+            "    public static void main(String[] args) {" +
+            "        Box<Box<Box<Box<Box<Box<String>>>>>> six;" +
+            "    }" +
+            "}";
+        assertDoesNotThrow(() -> interpreter.execute(source));
+    }
 }

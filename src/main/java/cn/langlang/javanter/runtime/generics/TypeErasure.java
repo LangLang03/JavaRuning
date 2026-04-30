@@ -10,8 +10,45 @@ import cn.langlang.javanter.parser.Modifier;
 import cn.langlang.javanter.runtime.model.*;
 import java.util.*;
 
+/**
+ * Handles Java generics type erasure during interpretation.
+ *
+ * <p>Type erasure is the process where the Java compiler removes all generic type
+ * information at compile time, replacing type parameters with their bounds or Object.</p>
+ *
+ * <p>This class provides utilities for:</p>
+ * <ul>
+ *   <li><b>Type erasure</b> - Converting generic types to their raw equivalents</li>
+ *   <li><b>Bridge method generation</b> - Creating synthetic bridge methods for overriding</li>
+ *   <li><b>Type inference</b> - Inferring type arguments from concrete values</li>
+ * </ul>
+ *
+ * <p>Bridge methods:</p>
+ * <p>When a generic class overrides a method from a superclass or interface,
+ * the compiler generates bridge methods to maintain type compatibility.
+ * For example, {@code Node<String>} overriding {@code Object clone()} needs
+ * a bridge method {@code Object clone()} that delegates to {@code String clone()}.</p>
+ *
+ * <p>Type erasure rules:</p>
+ * <ol>
+ *   <li>Replace all type parameters with their first bound, or Object if unbounded</li>
+ *   <li>Insert type casts when necessary for type safety</li>
+ *   <li>Generate bridge methods where needed to preserve method signatures</li>
+ * </ol>
+ *
+ * @see GenericType
+ * @see GenericMethodInfo
+ * @see ScriptMethod
+ * @author Javanter Development Team
+ */
 public class TypeErasure {
     
+    /**
+     * Erases a generic type to its non-generic representation.
+     *
+     * @param type The generic type to erase
+     * @return The erased type, or null if input is null
+     */
     public static GenericType erase(GenericType type) {
         if (type == null) return null;
         return type.getErasedType();
@@ -71,7 +108,22 @@ public class TypeErasure {
         }
         return erased;
     }
-    
+
+    /**
+     * Determines whether a bridge method is needed for a method override.
+     *
+     * <p>Bridge methods are needed when:</p>
+     * <ul>
+     *   <li>The method overrides a superclass method</li>
+     *   <li>The return type is a type variable</li>
+     *   <li>The erased return type differs from the super method's return type</li>
+     * </ul>
+     *
+     * @param method The overriding method
+     * @param superMethod The overridden method from the superclass
+     * @param classInfo Generic information about the class
+     * @return true if a bridge method is needed
+     */
     public static boolean needsBridgeMethod(ScriptMethod method, ScriptMethod superMethod,
                                             GenericClassInfo classInfo) {
         if (method == null || superMethod == null) return false;

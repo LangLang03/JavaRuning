@@ -175,9 +175,14 @@ public class StatementParser {
                 if (reader.match(TokenType.LT)) {
                     int depth = 1;
                     while (depth > 0 && !reader.check(TokenType.EOF)) {
-                        if (reader.match(TokenType.LT)) depth++;
-                        else if (reader.match(TokenType.GT)) depth--;
-                        else reader.advance();
+                        int closed = consumeClosingAngleBrackets();
+                        if (closed > 0) {
+                            depth -= closed;
+                        } else if (reader.match(TokenType.LT)) {
+                            depth++;
+                        } else {
+                            reader.advance();
+                        }
                     }
                 }
                 
@@ -198,6 +203,21 @@ public class StatementParser {
         } finally {
             reader.setCurrentPosition(save);
         }
+    }
+    
+    private int consumeClosingAngleBrackets() {
+        TokenType type = reader.peek().getType();
+        if (type == TokenType.GT) {
+            reader.advance();
+            return 1;
+        } else if (type == TokenType.RSHIFT) {
+            reader.advance();
+            return 2;
+        } else if (type == TokenType.URSHIFT) {
+            reader.advance();
+            return 3;
+        }
+        return 0;
     }
     
     public boolean isForEachLoop() {
@@ -229,9 +249,14 @@ public class StatementParser {
                 if (reader.match(TokenType.LT)) {
                     int depth = 1;
                     while (depth > 0 && !reader.check(TokenType.EOF)) {
-                        if (reader.match(TokenType.LT)) depth++;
-                        else if (reader.match(TokenType.GT)) depth--;
-                        else reader.advance();
+                        int closed = consumeClosingAngleBrackets();
+                        if (closed > 0) {
+                            depth -= closed;
+                        } else if (reader.match(TokenType.LT)) {
+                            depth++;
+                        } else {
+                            reader.advance();
+                        }
                     }
                 }
                 

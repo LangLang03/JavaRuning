@@ -35,11 +35,7 @@ public class TypeParser {
         
         List<TypeArgument> typeArguments = new ArrayList<>();
         if (reader.match(TokenType.LT)) {
-            if (reader.match(TokenType.GT)) {
-                typeArguments = new ArrayList<>();
-            } else {
-                typeArguments = parseTypeArguments();
-            }
+            typeArguments = parseTypeArguments();
         }
         
         int arrayDimensions = 0;
@@ -60,9 +56,13 @@ public class TypeParser {
     public List<TypeArgument> parseTypeArguments() {
         List<TypeArgument> arguments = new ArrayList<>();
         
-        do {
+        while (!reader.check(TokenType.GT) && !reader.check(TokenType.RSHIFT) && 
+               !reader.check(TokenType.URSHIFT) && !reader.isAtEnd()) {
             arguments.add(parseTypeArgument());
-        } while (reader.match(TokenType.COMMA));
+            if (!reader.match(TokenType.COMMA)) {
+                break;
+            }
+        }
         
         consumeClosingAngleBracket();
         return arguments;
@@ -73,15 +73,17 @@ public class TypeParser {
             return;
         }
         if (reader.match(TokenType.RSHIFT)) {
-            Token gtToken = new Token(TokenType.GT, ">", null, reader.previous().getLine(), reader.previous().getColumn());
+            Token prev = reader.previous();
+            Token gtToken = new Token(TokenType.GT, ">", null, prev.getLine(), prev.getColumn() + 1);
             reader.insertToken(reader.getCurrentPosition(), gtToken);
             return;
         }
         if (reader.match(TokenType.URSHIFT)) {
-            Token gtToken = new Token(TokenType.GT, ">", null, reader.previous().getLine(), reader.previous().getColumn());
-            reader.insertToken(reader.getCurrentPosition(), gtToken);
-            Token rshiftToken = new Token(TokenType.RSHIFT, ">>", null, reader.previous().getLine(), reader.previous().getColumn() + 1);
-            reader.insertToken(reader.getCurrentPosition() + 1, rshiftToken);
+            Token prev = reader.previous();
+            Token gtToken1 = new Token(TokenType.GT, ">", null, prev.getLine(), prev.getColumn() + 2);
+            Token gtToken2 = new Token(TokenType.GT, ">", null, prev.getLine(), prev.getColumn() + 1);
+            reader.insertToken(reader.getCurrentPosition(), gtToken1);
+            reader.insertToken(reader.getCurrentPosition(), gtToken2);
             return;
         }
         throw new Parser.ParseError(reader.peek(), "Expected '>' after type arguments");

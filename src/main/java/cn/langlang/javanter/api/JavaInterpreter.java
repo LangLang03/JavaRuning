@@ -16,24 +16,83 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.function.*;
 
+/**
+ * Main API class for the JavaInterpreter runtime.
+ * This class provides a high-level interface for loading, analyzing, and executing
+ * Java source code programmatically.
+ *
+ * <p>JavaInterpreter supports the following features:</p>
+ * <ul>
+ *   <li>Loading and executing Java source code from strings or files</li>
+ *   <li>Static analysis (linting) of Java code before execution</li>
+ *   <li>Script mode - executing Java-like code snippets without full class declarations</li>
+ *   <li>Registration of native Java methods and fields for interop</li>
+ *   <li>Integration with Java reflection API</li>
+ *   <li>Support for Lombok-style annotations via {@code @Data}</li>
+ * </ul>
+ *
+ * <p>Basic usage example:</p>
+ * <pre>
+ * {@code
+ * JavaInterpreter interpreter = new JavaInterpreter();
+ * interpreter.enableLombokStyleAnnotations();
+ *
+ * // Execute a script
+ * String script = "int x = 10; int y = 20; x + y";
+ * Object result = interpreter.execute(script);
+ * System.out.println("Result: " + result);  // Output: Result: 30
+ *
+ * // Load and run a full Java file
+ * interpreter.load("public class Main { public static void main(String[] args) { System.out.println(\"Hello!\"); } }");
+ * interpreter.runMain();
+ * }</pre>
+ *
+ * <p>Thread safety: This class is not thread-safe. Each thread should use its own
+ * JavaInterpreter instance, or proper synchronization should be applied.</p>
+ *
+ * @see Interpreter
+ * @see StaticAnalyzer
+ * @author Javanter Development Team
+ */
 public class JavaInterpreter {
     private final Interpreter interpreter;
     private final Environment globalEnv;
     private final Map<String, CompilationUnit> loadedUnits;
     private final StaticAnalyzer staticAnalyzer;
     private String mainClassName;
-    
+
+    /**
+     * Constructs a new JavaInterpreter with default settings.
+     * Initializes the internal interpreter, static analyzer, and global environment.
+     * Standard library classes (System, Math, etc.) are automatically available.
+     */
     public JavaInterpreter() {
         this.interpreter = new Interpreter();
         this.globalEnv = interpreter.getGlobalEnvironment();
         this.loadedUnits = new HashMap<>();
         this.staticAnalyzer = new StaticAnalyzer();
     }
-    
+
+    /**
+     * Performs static analysis (linting) on the given Java source code.
+     * This method checks for common errors without executing the code.
+     *
+     * @param source The Java source code to analyze
+     * @return AnalysisResult containing any errors or warnings found
+     */
     public StaticAnalyzer.AnalysisResult lint(String source) {
         return lint(source, null);
     }
-    
+
+    /**
+     * Performs static analysis (linting) on the given Java source code with a filename.
+     * This method checks for common errors without executing the code.
+     * The filename is used for better error reporting.
+     *
+     * @param source The Java source code to analyze
+     * @param fileName The name of the source file (for error reporting)
+     * @return AnalysisResult containing any errors or warnings found
+     */
     public StaticAnalyzer.AnalysisResult lint(String source, String fileName) {
         String processedSource = preprocessSource(source);
         
@@ -49,7 +108,14 @@ public class JavaInterpreter {
         
         return staticAnalyzer.analyze(ast);
     }
-    
+
+    /**
+     * Performs static analysis on a Java source file.
+     *
+     * @param filePath Path to the Java source file
+     * @return AnalysisResult containing any errors or warnings found
+     * @throws IOException if the file cannot be read
+     */
     public StaticAnalyzer.AnalysisResult lintFile(String filePath) throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(filePath)));
         String fileName = new File(filePath).getName();
@@ -59,11 +125,26 @@ public class JavaInterpreter {
     public void setMainClassName(String className) {
         this.mainClassName = className;
     }
-    
+
+    /**
+     * Loads Java source code into the interpreter without executing it.
+     * The source can be a complete Java class or a script snippet (no class declaration needed).
+     *
+     * @param source The Java source code to load
+     */
     public void load(String source) {
         load(source, null);
     }
-    
+
+    /**
+     * Loads Java source code into the interpreter without executing it.
+     * The source can be a complete Java class or a script snippet (no class declaration needed).
+     * If the source doesn't contain a class/interface/enum/annotation declaration, it is
+     * automatically wrapped in a public class named "Script" with a main method.
+     *
+     * @param source The Java source code to load
+     * @param fileName Optional filename for error reporting
+     */
     public void load(String source, String fileName) {
         String trimmedSource = source.trim();
 
@@ -89,18 +170,44 @@ public class JavaInterpreter {
         interpreter.interpretDeclarations(ast);
         loadedUnits.put(source.hashCode() + "", ast);
     }
-    
+
+    /**
+     * Loads and executes Java source code, returning the result of running main().
+     * This is a convenience method that combines load() and runMain().
+     *
+     * @param source The Java source code to execute
+     * @return The result of the main method execution, or null if no main method
+     */
     public Object execute(String source) {
         load(source);
         return runMain();
     }
-    
+
+    /**
+     * Loads and executes a Java source file, returning the result of running main().
+     *
+     * @param filePath Path to the Java source file
+     * @return The result of the main method execution, or null if no main method
+     * @throws IOException if the file cannot be read
+     */
     public Object executeFile(String filePath) throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(filePath)));
         interpreter.setCurrentFileName(new File(filePath).getName());
         return execute(source);
     }
-    
+
+    /**
+     * Executes the main method of the previously loaded source code.
+     * The main class is determined by either:
+     * <ul>
+     *   <li>The -main command line option</li>
+     *   <li>The first class declaration in the loaded source</li>
+     *   <li>Explicitly set via {@link #setMainClassName(String)}</li>
+     * </ul>
+     *
+     * @return The return value of the main method, or null if main returns void
+     * @throws RuntimeException if no main class is found
+     */
     public Object runMain() {
         if (mainClassName == null) {
             return null;
@@ -118,6 +225,17 @@ public class JavaInterpreter {
         return interpreter.invokeStaticMethod(mainClass, "main", Arrays.asList(emptyArgs));
     }
 
+    /**
+     * Preprocesses the source code to handle script mode.
+     * In script mode, code snippets that don't contain a class/interface/enum/annotation
+     * declaration are automatically wrapped in a public class "Script" with a main method.
+     *
+     * <p>This method also extracts import statements from scripts and preserves them
+     * when wrapping the script body.</p>
+     *
+     * @param source The original Java source code
+     * @return Preprocessed source with proper class declaration if needed
+     */
     private String preprocessSource(String source) {
         String trimmedSource = source.trim();
         
@@ -355,7 +473,14 @@ public class JavaInterpreter {
     public void enableLombokStyleAnnotations() {
         interpreter.addAnnotationProcessor(new cn.langlang.javanter.annotation.DataAnnotationProcessor());
     }
-    
+
+    /**
+     * Helper class providing static constants for Java access modifiers.
+     * These constants mirror the {@link Modifier} class and can be used when
+     * registering native methods, constructors, and fields.
+     *
+     * @see Modifier
+     */
     public static class Modifiers {
         public static final int PUBLIC = Modifier.PUBLIC;
         public static final int PRIVATE = Modifier.PRIVATE;

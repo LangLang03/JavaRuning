@@ -2,6 +2,44 @@ package cn.langlang.javanter.lexer;
 
 import java.util.*;
 
+/**
+ * Lexical analyzer (tokenizer) for the JavaInterpreter.
+ *
+ * <p>The Lexer converts raw Java source code into a stream of {@link Token}s,
+ * which are then consumed by the {@link cn.langlang.javanter.parser.Parser} to
+ * create an Abstract Syntax Tree (AST).</p>
+ *
+ * <p>Key features:</p>
+ * <ul>
+ *   <li>Tracks line and column numbers for accurate error reporting</li>
+ *   <li>Handles all Java tokens including operators, keywords, literals</li>
+ *   <li>Supports Unicode escapes (backslash-u followed by 4 hex digits) in string and character literals</li>
+ *   <li>Recognizes hex ({@code 0x}), binary ({@code 0b}), and decimal number formats</li>
+ *   <li>Handles single-line ({@code //}) and block ({@code /*}) comments</li>
+ *   <li>Supports numeric literals with underscores for readability (Java 7+)</li>
+ * </ul>
+ *
+ * <p>Tokenization process:</p>
+ * <ol>
+ *   <li>Scan each character to identify token boundaries</li>
+ *   <li>Recognize keywords, operators, and punctuation</li>
+ *   <li>Identify identifiers vs keywords using a lookup table</li>
+ *   <li>Parse numeric, string, and character literals</li>
+ *   <li>Handle escape sequences in string/character literals</li>
+ * </ol>
+ *
+ * <p>Example usage:</p>
+ * <pre>
+ * String source = "int x = 10 + 5;";
+ * Lexer lexer = new Lexer(source);
+ * List&lt;Token&gt; tokens = lexer.scanTokens();
+ * // tokens now contains: INT, IDENTIFIER("x"), ASSIGN, INT_LITERAL(10), PLUS, INT_LITERAL(5), SEMICOLON, EOF
+ * </pre>
+ *
+ * @see Token
+ * @see TokenType
+ * @author Javanter Development Team
+ */
 public class Lexer {
     private final String source;
     private final List<Token> tokens;
@@ -11,7 +49,11 @@ public class Lexer {
     private int column = 1;
     
     private static final Map<String, TokenType> keywords;
-    
+
+    /**
+     * Static initializer that populates the keyword lookup table.
+     * Maps all Java reserved words and keywords to their corresponding token types.
+     */
     static {
         keywords = new HashMap<>();
         keywords.put("abstract", TokenType.ABSTRACT);
@@ -68,12 +110,25 @@ public class Lexer {
         keywords.put("false", TokenType.FALSE);
         keywords.put("null", TokenType.NULL);
     }
-    
+
+    /**
+     * Constructs a Lexer for the given source code.
+     *
+     * @param source The Java source code to tokenize
+     */
     public Lexer(String source) {
         this.source = source;
         this.tokens = new ArrayList<>();
     }
-    
+
+    /**
+     * Scans all tokens from the source code.
+     *
+     * <p>This is the main entry point for lexical analysis. It processes
+     * the entire source string character by character until EOF is reached.</p>
+     *
+     * @return A list of tokens representing the source code
+     */
     public List<Token> scanTokens() {
         while (!isAtEnd()) {
             start = current;
@@ -82,7 +137,23 @@ public class Lexer {
         tokens.add(new Token(TokenType.EOF, "", null, line, column));
         return tokens;
     }
-    
+
+    /**
+     * Scans a single token from the current position.
+     *
+     * <p>This method examines the current character and dispatches to the
+     * appropriate scanning method based on the character value:</p>
+     * <ul>
+     *   <li>Single-char tokens: parentheses, braces, brackets, operators, etc.</li>
+     *   <li>Double-char tokens: compound operators like {@code ==}, {@code !=}, {@code &&}</li>
+     *   <li>Triple-char tokens: {@code ...} (ellipsis), {@code >>>} (unsigned right shift)</li>
+     *   <li>Whitespace: ignored (except for newline tracking)</li>
+     *   <li>Comments: skipped over</li>
+     *   <li>String/char literals: handled by {@link #scanString} and {@link #scanChar}</li>
+     *   <li>Numbers: handled by {@link #scanNumber}</li>
+     *   <li>Identifiers/keywords: handled by {@link #scanIdentifier}</li>
+     * </ul>
+     */
     private void scanToken() {
         char c = advance();
         
@@ -299,7 +370,27 @@ public class Lexer {
         advance();
         addToken(TokenType.CHAR_LITERAL, value);
     }
-    
+
+    /**
+     * Scans and returns the character value for an escape sequence.
+     *
+     * <p>Supported escape sequences:</p>
+     * <ul>
+     *   <li>{@code \b} - Backspace</li>
+     *   <li>{@code \t} - Tab</li>
+     *   <li>{@code \n} - Newline</li>
+     *   <li>{@code \f} - Form feed</li>
+     *   <li>{@code \r} - Carriage return</li>
+     *   <li>{@code \"} - Double quote</li>
+     *   <li>{@code \'} - Single quote</li>
+     *   <li>{@code \\} - Backslash</li>
+     *   <li>{@code \0-7} - Octal escape (1-3 digits)</li>
+     *   <li>{@code \\uXXXX} - Unicode escape (4 hex digits)</li>
+     * </ul>
+     *
+     * @return The interpreted character value
+     * @throws LexerException if an invalid escape sequence is encountered
+     */
     private char scanEscapeSequence() {
         char c = advance();
         switch (c) {
@@ -526,7 +617,19 @@ public class Lexer {
         String lexeme = source.substring(start, current);
         tokens.add(new Token(type, lexeme, literal, line, column - lexeme.length()));
     }
-    
+
+    /**
+     * Exception thrown when the lexer encounters invalid source code.
+     *
+     * <p>This includes:</p>
+     * <ul>
+     *   <li>Unterminated string literals</li>
+     *   <li>Unterminated character literals</li>
+     *   <li>Invalid escape sequences</li>
+     *   <li>Invalid unicode escapes</li>
+     *   <li>Unexpected characters not matching any token pattern</li>
+     * </ul>
+     */
     public static class LexerException extends RuntimeException {
         public LexerException(String message) {
             super(message);

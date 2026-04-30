@@ -22,6 +22,40 @@ import java.util.function.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * Core interpreter engine that executes Java code represented as an Abstract Syntax Tree (AST).
+ *
+ * <p>This class implements the {@link ASTVisitor} interface to traverse and evaluate
+ * Java AST nodes. It coordinates between different components:</p>
+ * <ul>
+ *   <li>{@link DeclarationExecutor} - Handles class, method, field declarations</li>
+ *   <li>{@link StatementExecutor} - Executes statements and control flow</li>
+ *   <li>{@link ExpressionEvaluator} - Evaluates expressions to values</li>
+ *   <li>{@link StandardLibrary} - Provides native Java method implementations</li>
+ * </ul>
+ *
+ * <p>The interpreter maintains:</p>
+ * <ul>
+ *   <li>A global environment ({@link Environment}) for variables and classes</li>
+ *   <li>A thread-local current environment for method scopes</li>
+ *   <li>A call stack for exception handling and stack traces</li>
+ *   <li>Loaded classes registry for reuse</li>
+ * </ul>
+ *
+ * <p>Key execution phases:</p>
+ * <ol>
+ *   <li><b>Lexing</b> - Source code to tokens (handled by {@link cn.langlang.javanter.lexer.Lexer})</li>
+ *   <li><b>Parsing</b> - Tokens to AST (handled by {@link cn.langlang.javanter.parser.Parser})</li>
+ *   <li><b>Declaration</b> - Register classes, methods, fields in environment</li>
+ *   <li><b>Initialization</b> - Execute static initializers and field initializers</li>
+ *   <li><b>Execution</b> - Run main method statements</li>
+ * </ol>
+ *
+ * @see ASTVisitor
+ * @see Environment
+ * @see ExecutionContext
+ * @author Javanter Development Team
+ */
 public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
     private static final Logger LOGGER = Logger.getLogger(Interpreter.class.getName());
     
@@ -36,7 +70,16 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
     private final DeclarationExecutor declarationExecutor;
     private final StatementExecutor statementExecutor;
     private final ExpressionEvaluator expressionEvaluator;
-    
+
+    /**
+     * Constructs a new Interpreter instance.
+     * Initializes the global environment, sub-executors, standard library,
+     * and registers built-in classes.
+     *
+     * <p>The constructor sets up thread-local storage for environment management,
+     * initializes the standard library, and creates the declaration/statement
+     * executors and expression evaluator.</p>
+     */
     public Interpreter() {
         RuntimeObject.setCurrentInterpreter(this);
         this.globalEnv = new Environment();
@@ -207,7 +250,24 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
         
         return null;
     }
-    
+
+    /**
+     * Initializes a class by executing its static initializers and static field initializers.
+     *
+     * <p>Class initialization follows Java semantics:</p>
+     * <ol>
+     *   <li>If the class is already initialized, return immediately</li>
+     *   <li>First initialize the superclass (if any)</li>
+     *   <li>Execute static field initializers in declaration order</li>
+     *   <li>Execute static initializer blocks in source order</li>
+     *   <li>Mark the class as initialized</li>
+     * </ol>
+     *
+     * <p>Static fields are stored in the global environment using the pattern
+     * {@code "ClassName.fieldName"} for access.</p>
+     *
+     * @param scriptClass The class to initialize
+     */
     public void initializeClass(ScriptClass scriptClass) {
         if (scriptClass.isInitialized()) return;
         
@@ -340,7 +400,28 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
         
         return null;
     }
-    
+
+    /**
+     * Registers all classes in a package to the current environment.
+     *
+     * <p>This method handles wildcard imports (e.g., {@code import java.util.*;})
+     * by discovering and registering all classes in the specified package.</p>
+     *
+     * <p>Class discovery is performed differently based on the runtime:</p>
+     * <ul>
+     *   <li><b>JVM</b> - Scans classpath directories and JAR files</li>
+     *   <li><b>Android</b> - Uses Dalvik DexFile APIs to scan APK dex files</li>
+     * </ul>
+     *
+     * <p>Security considerations:</p>
+     * <ul>
+     *   <li>Path traversal attacks are prevented by canonical path validation</li>
+     *   <li>Invalid class names are filtered out</li>
+     *   <li>Individual class loading errors are logged but don't stop the process</li>
+     * </ul>
+     *
+     * @param packageName The package name (may end with ".*" for wildcard)
+     */
     private void registerPackageClasses(String packageName) {
         String normalizedName = packageName.endsWith(".*") ? 
             packageName.substring(0, packageName.length() - 2) : packageName;
@@ -575,7 +656,30 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
         
         return classNames;
     }
-    
+
+    /**
+     * Scans a JAR file to find classes in a specific package.
+     *
+     * <p>This method:</p>
+     * <ol>
+     *   <li>Extracts the JAR file path from the URL (handling {@code jar:file://} protocol)</li>
+     *   <li>Validates the path to prevent path traversal attacks</li>
+     *   <li>Opens the JAR and iterates through entries</li>
+     *   <li>Filters class files belonging to the target package</li>
+     * </ol>
+     *
+     * <p>Security measures:</p>
+     * <ul>
+     *   <li>URL decodes the file path</li>
+     *   <li>Canonical path validation ensures the JAR is at an expected location</li>
+     *   <li>Entry names with {@code ".."} are skipped</li>
+     *   <li>Only top-level classes (not inner classes) are included</li>
+     * </ul>
+     *
+     * @param jarUrl The URL pointing to the JAR file
+     * @param packagePath The package path to filter (e.g., "java/util")
+     * @return Set of simple class names found in the package
+     */
     private Set<String> findClassesInJar(java.net.URL jarUrl, String packagePath) {
         Set<String> classNames = new HashSet<>();
         
@@ -954,7 +1058,41 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
         
         return scriptClass;
     }
-    
+
+    /**
+     * Invokes a method on a target object with the given arguments.
+     *
+     * <p>This method handles multiple method invocation scenarios:</p>
+     * <ul>
+     *   <li><b>Native methods</b> - Direct invocation via their native implementation</li>
+     *   <li><b>Static methods</b> - Class-level method calls</li>
+     *   <li><b>Instance methods</b> - Object-level method calls with {@code this} binding</li>
+     *   <li><b>Captured variables</b> - Variables captured from enclosing scopes in lambdas/closures</li>
+     * </ul>
+     *
+     * <p>Before method execution, this method:</p>
+     * <ol>
+     *   <li>Creates a new environment scope by pushing onto the environment stack</li>
+     *   <li>Sets up the {@code this} reference for instance methods</li>
+     *   <li>Copies captured variables for lambda/closure support</li>
+     *   <li>Binds method parameters to arguments</li>
+     * </ol>
+     *
+     * <p>After method execution (in finally block):</p>
+     * <ol>
+     *   <li>Pops the environment back to the previous scope</li>
+     *   <li>Pops the call stack</li>
+     * </ol>
+     *
+     * <p>Return values are handled via {@link ReturnException} which is caught
+     * and the value is extracted.</p>
+     *
+     * @param target The object to invoke the method on (null for static methods)
+     * @param method The method to invoke
+     * @param args The arguments to pass to the method
+     * @return The return value of the method, or null for void methods
+     * @throws InterpreterException if an error occurs during method execution
+     */
     @Override
     public Object invokeMethod(Object target, ScriptMethod method, List<Object> args) {
         if (method instanceof NativeMethod) {

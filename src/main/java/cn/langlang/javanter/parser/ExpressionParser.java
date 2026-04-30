@@ -603,11 +603,7 @@ public class ExpressionParser {
         
         List<TypeArgument> typeArguments = new ArrayList<>();
         if (reader.match(TokenType.LT)) {
-            if (reader.match(TokenType.GT)) {
-                typeArguments = new ArrayList<>();
-            } else {
-                typeArguments = typeParser.parseTypeArguments();
-            }
+            typeArguments = typeParser.parseTypeArguments();
         }
         
         Type type = new Type(typeToken, name, typeArguments, 0, annotations);

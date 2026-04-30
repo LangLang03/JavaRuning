@@ -8,6 +8,37 @@ import cn.langlang.javanter.ast.type.TypeParameter;
 import cn.langlang.javanter.runtime.generics.*;
 import java.util.*;
 
+/**
+ * Represents a class definition during interpretation.
+ *
+ * <p>ScriptClass is the runtime representation of a Java class. It stores:</p>
+ * <ul>
+ *   <li><b>name / qualifiedName</b> - Simple and fully qualified class names</li>
+ *   <li><b>modifiers</b> - Access modifiers and other flags (public, final, abstract, etc.)</li>
+ *   <li><b>superClass / interfaces</b> - Inheritance hierarchy</li>
+ *   <li><b>fields / methods / constructors</b> - Class members</li>
+ *   <li><b>initializers</b> - Static and instance initializer blocks</li>
+ *   <li><b>genericInfo / typeBindings</b> - Generic type parameters and their bindings</li>
+ * </ul>
+ *
+ * <p>Method resolution:</p>
+ * <p>Methods are resolved using a scoring system that considers:</p>
+ * <ul>
+ *   <li>Exact type matches (highest score)</li>
+ *   <li>Assignment compatibility through inheritance</li>
+ *   <li>Boxing/unboxing compatibility for primitives and wrappers</li>
+ *   <li>Widening conversions for numeric types</li>
+ * </ul>
+ *
+ * <p>Type parameter binding:</p>
+ * <p>When a generic class is instantiated with type arguments,
+ * the type parameters are bound to concrete types for type checking.</p>
+ *
+ * @see RuntimeObject
+ * @see ScriptMethod
+ * @see ScriptField
+ * @author Javanter Development Team
+ */
 public class ScriptClass {
     private final String name;
     private final String qualifiedName;
