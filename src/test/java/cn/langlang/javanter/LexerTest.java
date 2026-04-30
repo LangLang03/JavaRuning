@@ -277,23 +277,87 @@ public class LexerTest {
     }
     
     @Test
+    public void testTwoLevelNestedGenericTokens() {
+        String source = "Box<Box<String>> two";
+        Lexer lexer = new Lexer(source);
+        List<Token> tokens = lexer.scanTokens();
+        
+        List<TokenType> expectedClosing = Arrays.asList(TokenType.RSHIFT);
+        List<TokenType> actualClosing = new ArrayList<>();
+        for (Token t : tokens) {
+            if (t.getType() == TokenType.GT || t.getType() == TokenType.RSHIFT || t.getType() == TokenType.URSHIFT) {
+                actualClosing.add(t.getType());
+            }
+        }
+        
+        assertEquals(expectedClosing, actualClosing, "Two level nested generics should produce RSHIFT for >>");
+    }
+    
+    @Test
+    public void testThreeLevelNestedGenericTokens() {
+        String source = "Box<Box<Box<String>>> three";
+        Lexer lexer = new Lexer(source);
+        List<Token> tokens = lexer.scanTokens();
+        
+        List<TokenType> expectedClosing = Arrays.asList(TokenType.URSHIFT);
+        List<TokenType> actualClosing = new ArrayList<>();
+        for (Token t : tokens) {
+            if (t.getType() == TokenType.GT || t.getType() == TokenType.RSHIFT || t.getType() == TokenType.URSHIFT) {
+                actualClosing.add(t.getType());
+            }
+        }
+        
+        assertEquals(expectedClosing, actualClosing, "Three level nested generics should produce URSHIFT for >>>");
+    }
+    
+    @Test
     public void testFourLevelNestedGenericTokens() {
         String source = "Box<Box<Box<Box<String>>>> four";
         Lexer lexer = new Lexer(source);
         List<Token> tokens = lexer.scanTokens();
         
-        int urshiftIndex = -1;
-        int gtIndex = -1;
-        for (int i = 0; i < tokens.size(); i++) {
-            if (tokens.get(i).getType() == TokenType.URSHIFT) {
-                urshiftIndex = i;
-            }
-            if (tokens.get(i).getType() == TokenType.GT && gtIndex == -1) {
-                gtIndex = i;
+        List<TokenType> expectedClosing = Arrays.asList(TokenType.URSHIFT, TokenType.GT);
+        List<TokenType> actualClosing = new ArrayList<>();
+        for (Token t : tokens) {
+            if (t.getType() == TokenType.GT || t.getType() == TokenType.RSHIFT || t.getType() == TokenType.URSHIFT) {
+                actualClosing.add(t.getType());
             }
         }
         
-        assertTrue(urshiftIndex > 0, "Should have URSHIFT token");
-        assertTrue(gtIndex > urshiftIndex, "GT should come after URSHIFT");
+        assertEquals(expectedClosing, actualClosing, "Four level nested generics should produce URSHIFT GT for >>>>");
+    }
+    
+    @Test
+    public void testFiveLevelNestedGenericTokens() {
+        String source = "Box<Box<Box<Box<Box<String>>>>> five";
+        Lexer lexer = new Lexer(source);
+        List<Token> tokens = lexer.scanTokens();
+        
+        List<TokenType> expectedClosing = Arrays.asList(TokenType.URSHIFT, TokenType.RSHIFT);
+        List<TokenType> actualClosing = new ArrayList<>();
+        for (Token t : tokens) {
+            if (t.getType() == TokenType.GT || t.getType() == TokenType.RSHIFT || t.getType() == TokenType.URSHIFT) {
+                actualClosing.add(t.getType());
+            }
+        }
+        
+        assertEquals(expectedClosing, actualClosing, "Five level nested generics should produce URSHIFT RSHIFT for >>>>>");
+    }
+    
+    @Test
+    public void testSixLevelNestedGenericTokens() {
+        String source = "Box<Box<Box<Box<Box<Box<String>>>>>> six";
+        Lexer lexer = new Lexer(source);
+        List<Token> tokens = lexer.scanTokens();
+        
+        List<TokenType> expectedClosing = Arrays.asList(TokenType.URSHIFT, TokenType.URSHIFT);
+        List<TokenType> actualClosing = new ArrayList<>();
+        for (Token t : tokens) {
+            if (t.getType() == TokenType.GT || t.getType() == TokenType.RSHIFT || t.getType() == TokenType.URSHIFT) {
+                actualClosing.add(t.getType());
+            }
+        }
+        
+        assertEquals(expectedClosing, actualClosing, "Six level nested generics should produce URSHIFT URSHIFT for >>>>>>>");
     }
 }

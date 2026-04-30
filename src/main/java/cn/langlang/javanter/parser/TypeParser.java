@@ -80,9 +80,9 @@ public class TypeParser {
         }
         if (reader.match(TokenType.URSHIFT)) {
             Token prev = reader.previous();
-            Token gtToken1 = new Token(TokenType.GT, ">", null, prev.getLine(), prev.getColumn() + 2);
+            Token gtToken = new Token(TokenType.GT, ">", null, prev.getLine(), prev.getColumn() + 2);
             Token gtToken2 = new Token(TokenType.GT, ">", null, prev.getLine(), prev.getColumn() + 1);
-            reader.insertToken(reader.getCurrentPosition(), gtToken1);
+            reader.insertToken(reader.getCurrentPosition(), gtToken);
             reader.insertToken(reader.getCurrentPosition(), gtToken2);
             return;
         }
