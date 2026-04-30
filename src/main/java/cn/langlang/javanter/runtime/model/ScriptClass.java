@@ -35,15 +35,15 @@ public class ScriptClass {
         this.modifiers = modifiers;
         this.superClass = superClass;
         this.interfaces = interfaces != null ? interfaces : new ArrayList<>();
-        this.fields = new HashMap<>();
-        this.methods = new HashMap<>();
+        this.fields = new LinkedHashMap<>();
+        this.methods = new LinkedHashMap<>();
         this.constructors = new ArrayList<>();
         this.staticInitializers = new ArrayList<>();
         this.instanceInitializers = new ArrayList<>();
         this.astNode = astNode;
         this.initialized = false;
         this.typeParameters = new ArrayList<>();
-        this.typeBindings = new HashMap<>();
+        this.typeBindings = new LinkedHashMap<>();
     }
     
     public String getName() { return name; }
@@ -197,28 +197,237 @@ public class ScriptClass {
             Object arg = args.get(i);
             Type paramType = i < params.size() ? params.get(i).getType() : params.get(params.size() - 1).getType();
             
-            if (isTypeCompatible(arg, paramType)) {
-                score++;
-            } else {
+            int typeScore = computeTypeMatchScore(arg, paramType);
+            if (typeScore < 0) {
                 return -1;
             }
+            score += typeScore;
         }
         
         return score;
     }
     
-    private boolean isTypeCompatible(Object value, Type type) {
+    private int computeTypeMatchScore(Object value, Type type) {
         if (value == null) {
-            return !isPrimitiveType(type.getName());
+            return isPrimitiveType(type.getName()) ? -1 : 1;
         }
         
         String typeName = type.getName();
         
         if (isPrimitiveType(typeName)) {
-            return isPrimitiveCompatible(value, typeName);
+            return computePrimitiveMatchScore(value, typeName);
         }
         
-        return true;
+        if (isWrapperType(typeName)) {
+            Class<?> wrapperClass = getWrapperClass(typeName);
+            if (wrapperClass != null && wrapperClass.isInstance(value)) {
+                return 2;
+            }
+            if (isBoxingCompatible(value, typeName)) {
+                return 1;
+            }
+        }
+        
+        if (value instanceof RuntimeObject) {
+            RuntimeObject runtimeObj = (RuntimeObject) value;
+            ScriptClass valueClass = runtimeObj.getScriptClass();
+            if (valueClass != null) {
+                String valueClassName = valueClass.getName();
+                if (valueClassName.equals(typeName) || valueClass.getQualifiedName().equals(typeName)) {
+                    return 3;
+                }
+                if (isInterfaceImplementedBy(valueClass, typeName)) {
+                    return 2;
+                }
+                if (isSubclassOf(valueClass, typeName)) {
+                    return 2;
+                }
+            }
+            return 1;
+        }
+        
+        if (value instanceof ScriptClass) {
+            ScriptClass scriptClass = (ScriptClass) value;
+            if (scriptClass.getName().equals(typeName) || scriptClass.getQualifiedName().equals(typeName)) {
+                return 3;
+            }
+        }
+        
+        if (value instanceof Class) {
+            Class<?> clazz = (Class<?>) value;
+            if (clazz.getSimpleName().equals(typeName) || clazz.getName().equals(typeName)) {
+                return 3;
+            }
+        }
+        
+        Class<?> valueClass = value.getClass();
+        if (valueClass.getSimpleName().equals(typeName) || valueClass.getName().equals(typeName)) {
+            return 3;
+        }
+        
+        if (isAssignableFrom(typeName, valueClass)) {
+            return 2;
+        }
+        
+        return 1;
+    }
+    
+    private int computePrimitiveMatchScore(Object value, String typeName) {
+        if (value instanceof Number) {
+            Number num = (Number) value;
+            switch (typeName) {
+                case "int":
+                    if (value instanceof Integer) return 3;
+                    if (isWideningConvertible(num, typeName)) return 2;
+                    return -1;
+                case "long":
+                    if (value instanceof Long) return 3;
+                    if (value instanceof Integer) return 2;
+                    if (isWideningConvertible(num, typeName)) return 1;
+                    return -1;
+                case "float":
+                    if (value instanceof Float) return 3;
+                    if (value instanceof Long || value instanceof Integer) return 2;
+                    if (value instanceof Double) return 1;
+                    return -1;
+                case "double":
+                    if (value instanceof Double) return 3;
+                    if (value instanceof Float || value instanceof Long || value instanceof Integer) return 2;
+                    return -1;
+                case "byte":
+                    if (value instanceof Byte) return 3;
+                    return -1;
+                case "short":
+                    if (value instanceof Short) return 3;
+                    if (value instanceof Byte) return 2;
+                    return -1;
+                case "char":
+                    if (value instanceof Character) return 3;
+                    return -1;
+                case "boolean":
+                    if (value instanceof Boolean) return 3;
+                    return -1;
+            }
+        }
+        
+        if (typeName.equals("boolean") && value instanceof Boolean) return 3;
+        if (typeName.equals("char") && value instanceof Character) return 3;
+        
+        return -1;
+    }
+    
+    private boolean isWideningConvertible(Number num, String targetType) {
+        if (num instanceof Integer) {
+            return targetType.equals("long") || targetType.equals("float") || targetType.equals("double");
+        }
+        if (num instanceof Long) {
+            return targetType.equals("float") || targetType.equals("double");
+        }
+        if (num instanceof Float) {
+            return targetType.equals("double");
+        }
+        if (num instanceof Double) {
+            return false;
+        }
+        if (num instanceof Byte) {
+            return targetType.equals("short") || targetType.equals("int") || targetType.equals("long") || 
+                   targetType.equals("float") || targetType.equals("double");
+        }
+        if (num instanceof Short) {
+            return targetType.equals("int") || targetType.equals("long") || 
+                   targetType.equals("float") || targetType.equals("double");
+        }
+        return false;
+    }
+    
+    private boolean isWrapperType(String typeName) {
+        return typeName.equals("Integer") || typeName.equals("java.lang.Integer") ||
+               typeName.equals("Long") || typeName.equals("java.lang.Long") ||
+               typeName.equals("Double") || typeName.equals("java.lang.Double") ||
+               typeName.equals("Float") || typeName.equals("java.lang.Float") ||
+               typeName.equals("Boolean") || typeName.equals("java.lang.Boolean") ||
+               typeName.equals("Byte") || typeName.equals("java.lang.Byte") ||
+               typeName.equals("Short") || typeName.equals("java.lang.Short") ||
+               typeName.equals("Character") || typeName.equals("java.lang.Character");
+    }
+    
+    private Class<?> getWrapperClass(String typeName) {
+        switch (typeName) {
+            case "Integer":
+            case "java.lang.Integer":
+                return Integer.class;
+            case "Long":
+            case "java.lang.Long":
+                return Long.class;
+            case "Double":
+            case "java.lang.Double":
+                return Double.class;
+            case "Float":
+            case "java.lang.Float":
+                return Float.class;
+            case "Boolean":
+            case "java.lang.Boolean":
+                return Boolean.class;
+            case "Byte":
+            case "java.lang.Byte":
+                return Byte.class;
+            case "Short":
+            case "java.lang.Short":
+                return Short.class;
+            case "Character":
+            case "java.lang.Character":
+                return Character.class;
+            default:
+                return null;
+        }
+    }
+    
+    private boolean isBoxingCompatible(Object value, String typeName) {
+        if (value instanceof Integer && (typeName.equals("Integer") || typeName.equals("java.lang.Integer"))) return true;
+        if (value instanceof Long && (typeName.equals("Long") || typeName.equals("java.lang.Long"))) return true;
+        if (value instanceof Double && (typeName.equals("Double") || typeName.equals("java.lang.Double"))) return true;
+        if (value instanceof Float && (typeName.equals("Float") || typeName.equals("java.lang.Float"))) return true;
+        if (value instanceof Boolean && (typeName.equals("Boolean") || typeName.equals("java.lang.Boolean"))) return true;
+        if (value instanceof Byte && (typeName.equals("Byte") || typeName.equals("java.lang.Byte"))) return true;
+        if (value instanceof Short && (typeName.equals("Short") || typeName.equals("java.lang.Short"))) return true;
+        if (value instanceof Character && (typeName.equals("Character") || typeName.equals("java.lang.Character"))) return true;
+        return false;
+    }
+    
+    private boolean isInterfaceImplementedBy(ScriptClass scriptClass, String interfaceName) {
+        for (ScriptClass iface : scriptClass.getInterfaces()) {
+            if (iface.getName().equals(interfaceName) || iface.getQualifiedName().equals(interfaceName)) {
+                return true;
+            }
+            if (isInterfaceImplementedBy(iface, interfaceName)) {
+                return true;
+            }
+        }
+        if (scriptClass.getSuperClass() != null) {
+            return isInterfaceImplementedBy(scriptClass.getSuperClass(), interfaceName);
+        }
+        return false;
+    }
+    
+    private boolean isSubclassOf(ScriptClass scriptClass, String superClassName) {
+        ScriptClass current = scriptClass.getSuperClass();
+        while (current != null) {
+            if (current.getName().equals(superClassName) || current.getQualifiedName().equals(superClassName)) {
+                return true;
+            }
+            current = current.getSuperClass();
+        }
+        return false;
+    }
+    
+    private boolean isAssignableFrom(String typeName, Class<?> valueClass) {
+        try {
+            String fullName = typeName.contains(".") ? typeName : "java.lang." + typeName;
+            Class<?> targetClass = Class.forName(fullName);
+            return targetClass.isAssignableFrom(valueClass);
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
     
     private boolean isPrimitiveType(String typeName) {
@@ -226,18 +435,6 @@ public class ScriptClass {
                typeName.equals("short") || typeName.equals("byte") ||
                typeName.equals("char") || typeName.equals("boolean") ||
                typeName.equals("float") || typeName.equals("double");
-    }
-    
-    private boolean isPrimitiveCompatible(Object value, String typeName) {
-        if (typeName.equals("int")) return value instanceof Integer;
-        if (typeName.equals("long")) return value instanceof Long || value instanceof Integer;
-        if (typeName.equals("short")) return value instanceof Short || value instanceof Integer;
-        if (typeName.equals("byte")) return value instanceof Byte || value instanceof Integer;
-        if (typeName.equals("char")) return value instanceof Character;
-        if (typeName.equals("boolean")) return value instanceof Boolean;
-        if (typeName.equals("float")) return value instanceof Float || value instanceof Double || value instanceof Integer || value instanceof Long;
-        if (typeName.equals("double")) return value instanceof Double || value instanceof Float || value instanceof Integer || value instanceof Long;
-        return false;
     }
     
     public boolean isAssignableFrom(ScriptClass other) {

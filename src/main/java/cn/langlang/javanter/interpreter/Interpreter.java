@@ -19,8 +19,12 @@ import cn.langlang.javanter.runtime.nativesupport.NativeMethod;
 import cn.langlang.javanter.runtime.nativesupport.StandardLibrary;
 import java.util.*;
 import java.util.function.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
+    private static final Logger LOGGER = Logger.getLogger(Interpreter.class.getName());
+    
     private final Environment globalEnv;
     private final ThreadLocal<Environment> currentEnvHolder;
     private final Map<String, ScriptClass> loadedClasses;
@@ -355,8 +359,11 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
                 Class<?> clazz = Class.forName(fullName);
                 getCurrentEnv().defineVariable(className, clazz);
             } catch (ClassNotFoundException e) {
+                LOGGER.log(Level.FINE, "Class not found during package registration: " + normalizedName + "." + className, e);
             } catch (NoClassDefFoundError e) {
+                LOGGER.log(Level.WARNING, "NoClassDefFoundError during package registration: " + normalizedName + "." + className, e);
             } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Unexpected error during package registration: " + normalizedName + "." + className, e);
             }
         }
     }
@@ -422,6 +429,7 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
                     }
                 }
             } catch (Exception e) {
+                LOGGER.log(Level.FINE, "Error scanning DexClassLoader on Android for package: " + packageName, e);
             }
             
             String path = packageName.replace('.', '/');
@@ -432,6 +440,7 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
             }
             
         } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error finding classes on Android for package: " + packageName, e);
         }
         
         return classNames;
@@ -459,6 +468,7 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
                 }
             }
         } catch (Exception e) {
+            LOGGER.log(Level.FINE, "Error scanning dex file: " + dexPath + " for package: " + packageName, e);
         }
         return classNames;
     }
@@ -483,6 +493,7 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
                 }
             }
         } catch (Exception e) {
+            LOGGER.log(Level.FINE, "Error extracting classes from dex file for package: " + packageName, e);
         }
         return classNames;
     }
@@ -519,6 +530,7 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
                 }
             }
         } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error finding classes on JVM for package: " + packageName, e);
         }
         
         return classNames;
@@ -527,6 +539,18 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
     private Set<String> findClassesInDirectory(java.io.File directory, String packageName) {
         Set<String> classNames = new HashSet<>();
         if (!directory.exists()) {
+            return classNames;
+        }
+        
+        try {
+            String canonicalPath = directory.getCanonicalPath();
+            String absolutePath = directory.getAbsolutePath();
+            if (!canonicalPath.equals(absolutePath) && !canonicalPath.equals(new java.io.File(absolutePath).getCanonicalPath())) {
+                LOGGER.log(Level.WARNING, "Potential path traversal detected for directory: " + absolutePath);
+                return classNames;
+            }
+        } catch (java.io.IOException e) {
+            LOGGER.log(Level.WARNING, "Failed to validate directory path: " + directory.getPath(), e);
             return classNames;
         }
         
@@ -567,25 +591,43 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
                 filePath = filePath.substring(5);
             }
             
-            java.util.jar.JarFile jarFile = new java.util.jar.JarFile(java.net.URLDecoder.decode(filePath, "UTF-8"));
+            String decodedPath = java.net.URLDecoder.decode(filePath, "UTF-8");
+            java.io.File jarFile = new java.io.File(decodedPath);
             
-            Enumeration<java.util.jar.JarEntry> entries = jarFile.entries();
-            while (entries.hasMoreElements()) {
-                java.util.jar.JarEntry entry = entries.nextElement();
-                String entryName = entry.getName();
-                
-                if (entryName.startsWith(packagePath + "/") && entryName.endsWith(".class")) {
-                    String className = entryName.substring(packagePath.length() + 1, entryName.length() - 6);
-                    if (!className.contains("/") && !className.contains("$")) {
-                        if (isValidClassName(className)) {
-                            classNames.add(className);
+            try {
+                String canonicalPath = jarFile.getCanonicalPath();
+                String absolutePath = jarFile.getAbsolutePath();
+                if (!canonicalPath.equals(absolutePath)) {
+                    LOGGER.log(Level.WARNING, "Potential path traversal detected for jar file: " + absolutePath);
+                    return classNames;
+                }
+            } catch (java.io.IOException e) {
+                LOGGER.log(Level.WARNING, "Failed to validate jar file path: " + decodedPath, e);
+                return classNames;
+            }
+            
+            try (java.util.jar.JarFile jar = new java.util.jar.JarFile(jarFile)) {
+                Enumeration<java.util.jar.JarEntry> entries = jar.entries();
+                while (entries.hasMoreElements()) {
+                    java.util.jar.JarEntry entry = entries.nextElement();
+                    String entryName = entry.getName();
+                    
+                    if (entryName.contains("..")) {
+                        continue;
+                    }
+                    
+                    if (entryName.startsWith(packagePath + "/") && entryName.endsWith(".class")) {
+                        String className = entryName.substring(packagePath.length() + 1, entryName.length() - 6);
+                        if (!className.contains("/") && !className.contains("$")) {
+                            if (isValidClassName(className)) {
+                                classNames.add(className);
+                            }
                         }
                     }
                 }
             }
-            
-            jarFile.close();
         } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error finding classes in jar: " + jarUrl.getPath(), e);
         }
         
         return classNames;

@@ -210,14 +210,22 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
                 if (operand instanceof Double) return -(Double) operand;
                 if (operand instanceof Float) return -(Float) operand;
                 if (operand instanceof Long) return -(Long) operand;
-                return -(Integer) operand;
+                if (operand instanceof Integer) return -(Integer) operand;
+                if (operand instanceof Short) return -(Short) operand;
+                if (operand instanceof Byte) return -(Byte) operand;
+                if (operand instanceof Number) return -((Number) operand).doubleValue();
+                throw new RuntimeException("Cannot apply unary minus to non-numeric type: " + operand.getClass().getName());
             case PLUS:
                 return operand;
             case NOT:
                 return !interpreter.toBoolean(operand);
             case TILDE:
                 if (operand instanceof Long) return ~(Long) operand;
-                return ~(Integer) operand;
+                if (operand instanceof Integer) return ~(Integer) operand;
+                if (operand instanceof Short) return ~(Short) operand;
+                if (operand instanceof Byte) return ~(Byte) operand;
+                if (operand instanceof Number) return ~((Number) operand).intValue();
+                throw new RuntimeException("Cannot apply bitwise complement to non-integer type: " + operand.getClass().getName());
             case PLUSPLUS:
                 if (node.isPrefix()) {
                     Object newValue = increment(operand);
@@ -344,26 +352,86 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
                 if (oldValue instanceof Double || newValue instanceof Double) {
                     return interpreter.toDouble(oldValue) + interpreter.toDouble(newValue);
                 }
+                if (oldValue instanceof Float || newValue instanceof Float) {
+                    return interpreter.toFloat(oldValue) + interpreter.toFloat(newValue);
+                }
+                if (oldValue instanceof Long || newValue instanceof Long) {
+                    return interpreter.toLong(oldValue) + interpreter.toLong(newValue);
+                }
                 return interpreter.toInt(oldValue) + interpreter.toInt(newValue);
             case MINUS_ASSIGN:
+                if (oldValue instanceof Double || newValue instanceof Double) {
+                    return interpreter.toDouble(oldValue) - interpreter.toDouble(newValue);
+                }
+                if (oldValue instanceof Float || newValue instanceof Float) {
+                    return interpreter.toFloat(oldValue) - interpreter.toFloat(newValue);
+                }
+                if (oldValue instanceof Long || newValue instanceof Long) {
+                    return interpreter.toLong(oldValue) - interpreter.toLong(newValue);
+                }
                 return interpreter.toInt(oldValue) - interpreter.toInt(newValue);
             case STAR_ASSIGN:
+                if (oldValue instanceof Double || newValue instanceof Double) {
+                    return interpreter.toDouble(oldValue) * interpreter.toDouble(newValue);
+                }
+                if (oldValue instanceof Float || newValue instanceof Float) {
+                    return interpreter.toFloat(oldValue) * interpreter.toFloat(newValue);
+                }
+                if (oldValue instanceof Long || newValue instanceof Long) {
+                    return interpreter.toLong(oldValue) * interpreter.toLong(newValue);
+                }
                 return interpreter.toInt(oldValue) * interpreter.toInt(newValue);
             case SLASH_ASSIGN:
+                if (oldValue instanceof Double || newValue instanceof Double) {
+                    return interpreter.toDouble(oldValue) / interpreter.toDouble(newValue);
+                }
+                if (oldValue instanceof Float || newValue instanceof Float) {
+                    return interpreter.toFloat(oldValue) / interpreter.toFloat(newValue);
+                }
+                if (oldValue instanceof Long || newValue instanceof Long) {
+                    return interpreter.toLong(oldValue) / interpreter.toLong(newValue);
+                }
                 return interpreter.toInt(oldValue) / interpreter.toInt(newValue);
             case PERCENT_ASSIGN:
+                if (oldValue instanceof Double || newValue instanceof Double) {
+                    return interpreter.toDouble(oldValue) % interpreter.toDouble(newValue);
+                }
+                if (oldValue instanceof Float || newValue instanceof Float) {
+                    return interpreter.toFloat(oldValue) % interpreter.toFloat(newValue);
+                }
+                if (oldValue instanceof Long || newValue instanceof Long) {
+                    return interpreter.toLong(oldValue) % interpreter.toLong(newValue);
+                }
                 return interpreter.toInt(oldValue) % interpreter.toInt(newValue);
             case AND_ASSIGN:
+                if (oldValue instanceof Long || newValue instanceof Long) {
+                    return interpreter.toLong(oldValue) & interpreter.toLong(newValue);
+                }
                 return interpreter.toInt(oldValue) & interpreter.toInt(newValue);
             case OR_ASSIGN:
+                if (oldValue instanceof Long || newValue instanceof Long) {
+                    return interpreter.toLong(oldValue) | interpreter.toLong(newValue);
+                }
                 return interpreter.toInt(oldValue) | interpreter.toInt(newValue);
             case XOR_ASSIGN:
+                if (oldValue instanceof Long || newValue instanceof Long) {
+                    return interpreter.toLong(oldValue) ^ interpreter.toLong(newValue);
+                }
                 return interpreter.toInt(oldValue) ^ interpreter.toInt(newValue);
             case LSHIFT_ASSIGN:
+                if (oldValue instanceof Long) {
+                    return interpreter.toLong(oldValue) << interpreter.toInt(newValue);
+                }
                 return interpreter.toInt(oldValue) << interpreter.toInt(newValue);
             case RSHIFT_ASSIGN:
+                if (oldValue instanceof Long) {
+                    return interpreter.toLong(oldValue) >> interpreter.toInt(newValue);
+                }
                 return interpreter.toInt(oldValue) >> interpreter.toInt(newValue);
             case URSHIFT_ASSIGN:
+                if (oldValue instanceof Long) {
+                    return interpreter.toLong(oldValue) >>> interpreter.toInt(newValue);
+                }
                 return interpreter.toInt(oldValue) >>> interpreter.toInt(newValue);
             default:
                 throw new RuntimeException("Unknown compound assignment operator: " + op);
@@ -1132,15 +1200,22 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     }
     
     private Object castValue(Object value, Type targetType) {
+        if (targetType == null) {
+            throw new RuntimeException("Cannot cast to null type");
+        }
+        
+        String typeName = targetType.getName();
+        if (typeName == null) {
+            throw new RuntimeException("Cannot cast to type with null name");
+        }
+        
         if (value == null) {
-            String typeName = targetType.getName();
             if (typeRegistry.isPrimitiveType(typeName)) {
                 throw new RuntimeException("Cannot cast null to primitive type '" + typeName + "'");
             }
             return null;
         }
         
-        String typeName = targetType.getName();
         Object result = typeRegistry.castValue(value, typeName);
         
         if (result != value) {

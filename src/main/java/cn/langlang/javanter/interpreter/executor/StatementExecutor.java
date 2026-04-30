@@ -189,7 +189,7 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
             } else {
                 for (Expression caseValue : switchCase.getLabel().getValues()) {
                     Object caseVal = caseValue.accept(interpreter.getExpressionEvaluator());
-                    if (Objects.equals(value, caseVal)) {
+                    if (isSwitchMatch(value, caseVal)) {
                         matchedCase = switchCase;
                         break;
                     }
@@ -222,6 +222,46 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
         }
         
         return null;
+    }
+    
+    private boolean isSwitchMatch(Object value, Object caseVal) {
+        if (value == null && caseVal == null) {
+            return true;
+        }
+        if (value == null || caseVal == null) {
+            return false;
+        }
+        
+        if (value instanceof String && caseVal instanceof String) {
+            return value.equals(caseVal);
+        }
+        
+        if (value instanceof EnumConstant && caseVal instanceof EnumConstant) {
+            return ((EnumConstant) value).getName().equals(((EnumConstant) caseVal).getName());
+        }
+        
+        if (value instanceof Number && caseVal instanceof Number) {
+            return compareNumbers((Number) value, (Number) caseVal) == 0;
+        }
+        
+        if (value instanceof Character && caseVal instanceof Character) {
+            return value.equals(caseVal);
+        }
+        
+        return Objects.equals(value, caseVal);
+    }
+    
+    private int compareNumbers(Number a, Number b) {
+        if (a instanceof Double || b instanceof Double) {
+            return Double.compare(a.doubleValue(), b.doubleValue());
+        }
+        if (a instanceof Float || b instanceof Float) {
+            return Float.compare(a.floatValue(), b.floatValue());
+        }
+        if (a instanceof Long || b instanceof Long) {
+            return Long.compare(a.longValue(), b.longValue());
+        }
+        return Integer.compare(a.intValue(), b.intValue());
     }
     
     @Override
