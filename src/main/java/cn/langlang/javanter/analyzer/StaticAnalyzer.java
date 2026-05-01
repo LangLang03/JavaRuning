@@ -98,8 +98,25 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
                 registerInterface((InterfaceDeclaration) type);
             } else if (type instanceof EnumDeclaration) {
                 registerEnum((EnumDeclaration) type);
+            } else if (type instanceof RecordDeclaration) {
+                registerRecord((RecordDeclaration) type);
             }
         }
+    }
+    
+    private void registerRecord(RecordDeclaration node) {
+        ScriptClassInfo info = new ScriptClassInfo(node.getName(), node.getModifiers() | Modifier.FINAL | Modifier.RECORD);
+        
+        for (RecordDeclaration.RecordComponent component : node.getComponents()) {
+            info.addField(component.getName(), Modifier.PUBLIC | Modifier.FINAL);
+            definedVariables.add(component.getName());
+        }
+        
+        for (MethodDeclaration method : node.getMethods()) {
+            info.addMethod(method.getName(), method.getModifiers(), method.getParameters());
+        }
+        
+        classes.put(node.getName(), info);
     }
     
     private void registerEnum(EnumDeclaration node) {
@@ -125,6 +142,36 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
         ScriptClassInfo info = new ScriptClassInfo(node.getName(), node.getModifiers());
         info.setStatic((node.getModifiers() & Modifier.STATIC) != 0);
         
+        if ((node.getModifiers() & Modifier.SEALED) != 0) {
+            if (node.getPermittedSubtypes() != null && !node.getPermittedSubtypes().isEmpty()) {
+                for (Type permitted : node.getPermittedSubtypes()) {
+                    info.addPermittedSubclass(permitted.getName());
+                }
+            } else {
+                warnings.add(new LintWarning(
+                    node.getLine(),
+                    node.getColumn(),
+                    currentFileName,
+                    node.getName(),
+                    null,
+                    "Sealed class should have a permits clause"
+                ));
+            }
+        }
+        
+        if ((node.getModifiers() & Modifier.NON_SEALED) != 0) {
+            if ((node.getModifiers() & Modifier.FINAL) != 0) {
+                warnings.add(new LintWarning(
+                    node.getLine(),
+                    node.getColumn(),
+                    currentFileName,
+                    node.getName(),
+                    null,
+                    "Class cannot be both non-sealed and final"
+                ));
+            }
+        }
+        
         for (FieldDeclaration field : node.getFields()) {
             info.addField(field.getName(), field.getModifiers());
         }
@@ -140,7 +187,20 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
         ScriptClassInfo info = new ScriptClassInfo(node.getName(), node.getModifiers() | Modifier.INTERFACE);
         
         for (MethodDeclaration method : node.getMethods()) {
-            info.addMethod(method.getName(), method.getModifiers(), method.getParameters());
+            int modifiers = method.getModifiers();
+            if ((modifiers & Modifier.PRIVATE) != 0) {
+                if ((modifiers & Modifier.STATIC) == 0 && method.getBody() == null) {
+                    warnings.add(new LintWarning(
+                        method.getLine(),
+                        method.getColumn(),
+                        currentFileName,
+                        node.getName(),
+                        method.getName(),
+                        "Private interface method should have a body"
+                    ));
+                }
+            }
+            info.addMethod(method.getName(), modifiers, method.getParameters());
         }
         
         classes.put(node.getName(), info);
@@ -263,6 +323,27 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
     }
     
     @Override
+    public Void visitRecordDeclaration(RecordDeclaration node) {
+        ScriptClassInfo previousClass = currentClass;
+        currentClass = classes.get(node.getName());
+        
+        for (RecordDeclaration.RecordComponent component : node.getComponents()) {
+            definedVariables.add(component.getName());
+        }
+        
+        for (MethodDeclaration method : node.getMethods()) {
+            method.accept(this);
+        }
+        
+        for (TypeDeclaration nested : node.getNestedTypes()) {
+            nested.accept(this);
+        }
+        
+        currentClass = previousClass;
+        return null;
+    }
+    
+    @Override
     public Void visitEnumConstant(EnumConstant node) {
         return null;
     }
@@ -340,6 +421,14 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
             definedVariables.add(declarator.getName());
             if (declarator.getInitializer() != null) {
                 declarator.getInitializer().accept(this);
+            }
+        }
+        
+        if (node.getType() != null && "var".equals(node.getType().getName())) {
+            for (LocalVariableDeclaration.VariableDeclarator declarator : node.getDeclarators()) {
+                if (declarator.getInitializer() == null) {
+                    addError(node, "Variable declared with 'var' must have an initializer");
+                }
             }
         }
         return null;
@@ -547,6 +636,9 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
     @Override
     public Void visitInstanceOfExpression(InstanceOfExpression node) {
         node.getExpression().accept(this);
+        if (node.getPatternVariable() != null) {
+            definedVariables.add(node.getPatternVariable());
+        }
         return null;
     }
     
@@ -652,6 +744,32 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
             for (Statement stmt : switchCase.getStatements()) {
                 stmt.accept(this);
             }
+        }
+        return null;
+    }
+    
+    @Override
+    public Void visitSwitchExpression(SwitchExpression node) {
+        node.getSelector().accept(this);
+        for (SwitchExpression.SwitchCase switchCase : node.getCases()) {
+            for (CaseLabel label : switchCase.getLabels()) {
+                label.accept(this);
+            }
+            if (switchCase.isArrow() && switchCase.getBody() instanceof Expression) {
+                ((Expression) switchCase.getBody()).accept(this);
+            } else if (switchCase.getBody() instanceof BlockStatement) {
+                ((BlockStatement) switchCase.getBody()).accept(this);
+            } else if (switchCase.getBody() instanceof Statement) {
+                ((Statement) switchCase.getBody()).accept(this);
+            }
+        }
+        return null;
+    }
+    
+    @Override
+    public Void visitYieldStatement(YieldStatement node) {
+        if (node.getValue() != null) {
+            node.getValue().accept(this);
         }
         return null;
     }
@@ -864,6 +982,7 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
         private final int modifiers;
         private final Map<String, FieldInfo> fields;
         private final Map<String, List<MethodInfo>> methods;
+        private final Set<String> permittedSubclasses;
         private boolean isStatic;
         
         public ScriptClassInfo(String name, int modifiers) {
@@ -871,12 +990,23 @@ public class StaticAnalyzer extends AbstractASTVisitor<Void> {
             this.modifiers = modifiers;
             this.fields = new HashMap<>();
             this.methods = new HashMap<>();
+            this.permittedSubclasses = new HashSet<>();
         }
         
         public String getName() { return name; }
         public int getModifiers() { return modifiers; }
         public boolean isStatic() { return isStatic; }
         public void setStatic(boolean isStatic) { this.isStatic = isStatic; }
+        public boolean isSealed() { return (modifiers & Modifier.SEALED) != 0; }
+        public boolean isFinal() { return (modifiers & Modifier.FINAL) != 0; }
+        
+        public void addPermittedSubclass(String name) {
+            permittedSubclasses.add(name);
+        }
+        
+        public boolean isPermittedSubclass(String name) {
+            return permittedSubclasses.contains(name);
+        }
         
         public void addField(String name, int modifiers) {
             fields.put(name, new FieldInfo(name, modifiers));
