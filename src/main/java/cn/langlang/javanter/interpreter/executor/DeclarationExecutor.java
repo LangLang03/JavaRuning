@@ -11,6 +11,7 @@ import cn.langlang.javanter.ast.type.Type;
 import cn.langlang.javanter.ast.type.TypeParameter;
 import cn.langlang.javanter.interpreter.Interpreter;
 import cn.langlang.javanter.parser.Modifier;
+import cn.langlang.javanter.runtime.TypeConstants;
 import cn.langlang.javanter.runtime.environment.Environment;
 import cn.langlang.javanter.runtime.model.*;
 import cn.langlang.javanter.runtime.generics.*;
@@ -225,25 +226,17 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
     }
     
     private Class<?> tryLoadClass(String typeName) {
+        Class<?> primitiveClass = TypeConstants.getPrimitiveClass(typeName);
+        if (primitiveClass != null) return primitiveClass;
+        
+        Class<?> wrapperClass = TypeConstants.getWrapperClass(typeName);
+        if (wrapperClass != null) return wrapperClass;
+        
+        if (typeName.equals(TypeConstants.STRING)) return String.class;
+        if (typeName.equals(TypeConstants.OBJECT)) return Object.class;
+        if (typeName.equals("Class")) return Class.class;
+        
         try {
-            if (typeName.equals("int")) return int.class;
-            if (typeName.equals("long")) return long.class;
-            if (typeName.equals("short")) return short.class;
-            if (typeName.equals("byte")) return byte.class;
-            if (typeName.equals("char")) return char.class;
-            if (typeName.equals("boolean")) return boolean.class;
-            if (typeName.equals("float")) return float.class;
-            if (typeName.equals("double")) return double.class;
-            if (typeName.equals("void")) return void.class;
-            
-            if (typeName.equals("String")) return String.class;
-            if (typeName.equals("Integer")) return Integer.class;
-            if (typeName.equals("Long")) return Long.class;
-            if (typeName.equals("Double")) return Double.class;
-            if (typeName.equals("Boolean")) return Boolean.class;
-            if (typeName.equals("Object")) return Object.class;
-            if (typeName.equals("Class")) return Class.class;
-            
             return Class.forName(typeName);
         } catch (ClassNotFoundException e) {
             return null;

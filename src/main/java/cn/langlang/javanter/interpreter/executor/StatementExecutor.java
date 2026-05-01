@@ -11,6 +11,7 @@ import cn.langlang.javanter.ast.statement.*;
 import cn.langlang.javanter.ast.type.Type;
 import cn.langlang.javanter.interpreter.Interpreter;
 import cn.langlang.javanter.interpreter.exception.*;
+import cn.langlang.javanter.runtime.ExceptionConstants;
 import cn.langlang.javanter.runtime.environment.Environment;
 import cn.langlang.javanter.runtime.model.*;
 import java.util.*;
@@ -132,247 +133,112 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
         Object iterable = node.getIterable().accept(interpreter.getExpressionEvaluator());
         
         if (iterable instanceof Object[]) {
-            Object[] array = (Object[]) iterable;
-            for (Object element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEach((Object[]) iterable, node);
         } else if (iterable instanceof int[]) {
-            int[] array = (int[]) iterable;
-            for (int element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEachPrimitive((int[]) iterable, node);
         } else if (iterable instanceof long[]) {
-            long[] array = (long[]) iterable;
-            for (long element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEachPrimitive((long[]) iterable, node);
         } else if (iterable instanceof double[]) {
-            double[] array = (double[]) iterable;
-            for (double element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEachPrimitive((double[]) iterable, node);
         } else if (iterable instanceof float[]) {
-            float[] array = (float[]) iterable;
-            for (float element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEachPrimitive((float[]) iterable, node);
         } else if (iterable instanceof boolean[]) {
-            boolean[] array = (boolean[]) iterable;
-            for (boolean element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEachPrimitive((boolean[]) iterable, node);
         } else if (iterable instanceof char[]) {
-            char[] array = (char[]) iterable;
-            for (char element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEachPrimitive((char[]) iterable, node);
         } else if (iterable instanceof short[]) {
-            short[] array = (short[]) iterable;
-            for (short element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEachPrimitive((short[]) iterable, node);
         } else if (iterable instanceof byte[]) {
-            byte[] array = (byte[]) iterable;
-            for (byte element : array) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEachPrimitive((byte[]) iterable, node);
         } else if (iterable instanceof Iterable) {
-            for (Object element : (Iterable<?>) iterable) {
-                Environment previous = interpreter.getCurrentEnv();
-                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
-                
-                try {
-                    LocalVariableDeclaration.VariableDeclarator declarator = 
-                        node.getVariable().getDeclarators().get(0);
-                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
-                    
-                    try {
-                        node.getBody().accept(this);
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
-                    } catch (ContinueException e) {
-                        if (e.getLabel() == null) continue;
-                        throw e;
-                    }
-                } finally {
-                    interpreter.setCurrentEnv(previous);
-                }
-            }
+            executeForEach((Iterable<?>) iterable, node);
         }
         
         return null;
+    }
+    
+    private void executeForEach(Object[] array, ForEachStatement node) {
+        for (Object element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEach(Iterable<?> iterable, ForEachStatement node) {
+        for (Object element : iterable) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEachPrimitive(int[] array, ForEachStatement node) {
+        for (int element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEachPrimitive(long[] array, ForEachStatement node) {
+        for (long element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEachPrimitive(double[] array, ForEachStatement node) {
+        for (double element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEachPrimitive(float[] array, ForEachStatement node) {
+        for (float element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEachPrimitive(boolean[] array, ForEachStatement node) {
+        for (boolean element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEachPrimitive(char[] array, ForEachStatement node) {
+        for (char element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEachPrimitive(short[] array, ForEachStatement node) {
+        for (short element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private void executeForEachPrimitive(byte[] array, ForEachStatement node) {
+        for (byte element : array) {
+            if (!executeForEachBody(element, node)) break;
+        }
+    }
+    
+    private boolean executeForEachBody(Object element, ForEachStatement node) {
+        Environment previous = interpreter.getCurrentEnv();
+        interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+        
+        try {
+            LocalVariableDeclaration.VariableDeclarator declarator = 
+                node.getVariable().getDeclarators().get(0);
+            interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+            
+            try {
+                node.getBody().accept(this);
+                return true;
+            } catch (BreakException e) {
+                if (e.getLabel() == null) return false;
+                throw e;
+            } catch (ContinueException e) {
+                if (e.getLabel() == null) return true;
+                throw e;
+            }
+        } finally {
+            interpreter.setCurrentEnv(previous);
+        }
     }
     
     @Override
@@ -651,35 +517,8 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
     }
     
     private boolean isExceptionTypeMatch(Class<?> exceptionClass, String typeName) {
-        if (typeName.equals("Exception") || typeName.equals("java.lang.Exception")) {
-            return Exception.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("RuntimeException") || typeName.equals("java.lang.RuntimeException")) {
-            return RuntimeException.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("Throwable") || typeName.equals("java.lang.Throwable")) {
-            return Throwable.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("IOException") || typeName.equals("java.io.IOException")) {
-            return java.io.IOException.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("NullPointerException") || typeName.equals("java.lang.NullPointerException")) {
-            return NullPointerException.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("ArithmeticException") || typeName.equals("java.lang.ArithmeticException")) {
-            return ArithmeticException.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("IllegalArgumentException") || typeName.equals("java.lang.IllegalArgumentException")) {
-            return IllegalArgumentException.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("IndexOutOfBoundsException") || typeName.equals("java.lang.IndexOutOfBoundsException")) {
-            return IndexOutOfBoundsException.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("ClassCastException") || typeName.equals("java.lang.ClassCastException")) {
-            return ClassCastException.class.isAssignableFrom(exceptionClass);
-        }
-        if (typeName.equals("NumberFormatException") || typeName.equals("java.lang.NumberFormatException")) {
-            return NumberFormatException.class.isAssignableFrom(exceptionClass);
+        if (ExceptionConstants.isAssignableFrom(typeName, exceptionClass)) {
+            return true;
         }
         
         try {

@@ -16,6 +16,10 @@ import java.util.stream.*;
 import java.lang.reflect.*;
 
 public class StandardLibrary {
+    private static final int METHOD_MATCH_EXACT_TYPE = 10;
+    private static final int METHOD_MATCH_PRIMITIVE = 5;
+    private static final int METHOD_MATCH_COMPATIBLE = 1;
+    
     private final Interpreter interpreter;
     private final Map<String, ScriptClass> standardClasses;
     private final NativeMethodRegistry methodRegistry;
@@ -1266,18 +1270,18 @@ public class StandardLibrary {
             Class<?> paramType = paramTypes[i];
             
             if (arg == null) {
-                score += 1;
+                score += METHOD_MATCH_COMPATIBLE;
             } else if (paramType.isInstance(arg)) {
-                score += 10;
+                score += METHOD_MATCH_EXACT_TYPE;
             } else if (paramType.isPrimitive() && arg instanceof Number) {
-                score += 5;
+                score += METHOD_MATCH_PRIMITIVE;
             } else {
-                score += 1;
+                score += METHOD_MATCH_COMPATIBLE;
             }
         }
         
         if (isVarArgs && args.size() >= fixedParams) {
-            score += 5;
+            score += METHOD_MATCH_PRIMITIVE;
         }
         
         return score;

@@ -12,6 +12,18 @@ import cn.langlang.javanter.ast.declaration.*;
 import java.util.*;
 
 public class ExpressionParser {
+    private static final int PRECEDENCE_MULTIPLICATIVE = 12;
+    private static final int PRECEDENCE_ADDITIVE = 11;
+    private static final int PRECEDENCE_SHIFT = 10;
+    private static final int PRECEDENCE_RELATIONAL = 9;
+    private static final int PRECEDENCE_EQUALITY = 8;
+    private static final int PRECEDENCE_BITWISE_AND = 7;
+    private static final int PRECEDENCE_BITWISE_XOR = 6;
+    private static final int PRECEDENCE_BITWISE_OR = 5;
+    private static final int PRECEDENCE_LOGICAL_AND = 4;
+    private static final int PRECEDENCE_LOGICAL_OR = 3;
+    private static final int PRECEDENCE_NONE = -1;
+    
     private final TokenReader reader;
     private final ModifierAndAnnotationParser modifierAndAnnotationParser;
     private final TypeParser typeParser;
@@ -106,35 +118,35 @@ public class ExpressionParser {
             case STAR:
             case SLASH:
             case PERCENT:
-                return 12;
+                return PRECEDENCE_MULTIPLICATIVE;
             case PLUS:
             case MINUS:
-                return 11;
+                return PRECEDENCE_ADDITIVE;
             case LSHIFT:
             case RSHIFT:
             case URSHIFT:
-                return 10;
+                return PRECEDENCE_SHIFT;
             case LT:
             case GT:
             case LE:
             case GE:
             case INSTANCEOF:
-                return 9;
+                return PRECEDENCE_RELATIONAL;
             case EQ:
             case NE:
-                return 8;
+                return PRECEDENCE_EQUALITY;
             case AMPERSAND:
-                return 7;
+                return PRECEDENCE_BITWISE_AND;
             case CARET:
-                return 6;
+                return PRECEDENCE_BITWISE_XOR;
             case PIPE:
-                return 5;
+                return PRECEDENCE_BITWISE_OR;
             case AND:
-                return 4;
+                return PRECEDENCE_LOGICAL_AND;
             case OR:
-                return 3;
+                return PRECEDENCE_LOGICAL_OR;
             default:
-                return -1;
+                return PRECEDENCE_NONE;
         }
     }
     

@@ -5,6 +5,7 @@ import cn.langlang.javanter.ast.declaration.ParameterDeclaration;
 import cn.langlang.javanter.ast.declaration.TypeDeclaration;
 import cn.langlang.javanter.ast.type.Type;
 import cn.langlang.javanter.ast.type.TypeParameter;
+import cn.langlang.javanter.runtime.TypeConstants;
 import cn.langlang.javanter.runtime.generics.*;
 import java.util.*;
 
@@ -40,6 +41,11 @@ import java.util.*;
  * @author Javanter Development Team
  */
 public class ScriptClass {
+    private static final int MATCH_SCORE_EXACT = 3;
+    private static final int MATCH_SCORE_WIDENING = 2;
+    private static final int MATCH_SCORE_COMPATIBLE = 1;
+    private static final int MATCH_SCORE_NONE = -1;
+    
     private final String name;
     private final String qualifiedName;
     private final int modifiers;
@@ -284,7 +290,7 @@ public class ScriptClass {
     
     private int computeTypeMatchScore(Object value, Type type) {
         if (value == null) {
-            return isPrimitiveType(type.getName()) ? -1 : 1;
+            return isPrimitiveType(type.getName()) ? MATCH_SCORE_NONE : MATCH_SCORE_COMPATIBLE;
         }
         
         String typeName = type.getName();
@@ -296,10 +302,10 @@ public class ScriptClass {
         if (isWrapperType(typeName)) {
             Class<?> wrapperClass = getWrapperClass(typeName);
             if (wrapperClass != null && wrapperClass.isInstance(value)) {
-                return 2;
+                return MATCH_SCORE_WIDENING;
             }
             if (isBoxingCompatible(value, typeName)) {
-                return 1;
+                return MATCH_SCORE_COMPATIBLE;
             }
         }
         
@@ -309,42 +315,42 @@ public class ScriptClass {
             if (valueClass != null) {
                 String valueClassName = valueClass.getName();
                 if (valueClassName.equals(typeName) || valueClass.getQualifiedName().equals(typeName)) {
-                    return 3;
+                    return MATCH_SCORE_EXACT;
                 }
                 if (isInterfaceImplementedBy(valueClass, typeName)) {
-                    return 2;
+                    return MATCH_SCORE_WIDENING;
                 }
                 if (isSubclassOf(valueClass, typeName)) {
-                    return 2;
+                    return MATCH_SCORE_WIDENING;
                 }
             }
-            return 1;
+            return MATCH_SCORE_COMPATIBLE;
         }
         
         if (value instanceof ScriptClass) {
             ScriptClass scriptClass = (ScriptClass) value;
             if (scriptClass.getName().equals(typeName) || scriptClass.getQualifiedName().equals(typeName)) {
-                return 3;
+                return MATCH_SCORE_EXACT;
             }
         }
         
         if (value instanceof Class) {
             Class<?> clazz = (Class<?>) value;
             if (clazz.getSimpleName().equals(typeName) || clazz.getName().equals(typeName)) {
-                return 3;
+                return MATCH_SCORE_EXACT;
             }
         }
         
         Class<?> valueClass = value.getClass();
         if (valueClass.getSimpleName().equals(typeName) || valueClass.getName().equals(typeName)) {
-            return 3;
+            return MATCH_SCORE_EXACT;
         }
         
         if (isAssignableFrom(typeName, valueClass)) {
-            return 2;
+            return MATCH_SCORE_WIDENING;
         }
         
-        return 1;
+        return MATCH_SCORE_COMPATIBLE;
     }
     
     private int computePrimitiveMatchScore(Object value, String typeName) {
@@ -352,43 +358,43 @@ public class ScriptClass {
             Number num = (Number) value;
             switch (typeName) {
                 case "int":
-                    if (value instanceof Integer) return 3;
-                    if (isWideningConvertible(num, typeName)) return 2;
-                    return -1;
+                    if (value instanceof Integer) return MATCH_SCORE_EXACT;
+                    if (isWideningConvertible(num, typeName)) return MATCH_SCORE_WIDENING;
+                    return MATCH_SCORE_NONE;
                 case "long":
-                    if (value instanceof Long) return 3;
-                    if (value instanceof Integer) return 2;
-                    if (isWideningConvertible(num, typeName)) return 1;
-                    return -1;
+                    if (value instanceof Long) return MATCH_SCORE_EXACT;
+                    if (value instanceof Integer) return MATCH_SCORE_WIDENING;
+                    if (isWideningConvertible(num, typeName)) return MATCH_SCORE_COMPATIBLE;
+                    return MATCH_SCORE_NONE;
                 case "float":
-                    if (value instanceof Float) return 3;
-                    if (value instanceof Long || value instanceof Integer) return 2;
-                    if (value instanceof Double) return 1;
-                    return -1;
+                    if (value instanceof Float) return MATCH_SCORE_EXACT;
+                    if (value instanceof Long || value instanceof Integer) return MATCH_SCORE_WIDENING;
+                    if (value instanceof Double) return MATCH_SCORE_COMPATIBLE;
+                    return MATCH_SCORE_NONE;
                 case "double":
-                    if (value instanceof Double) return 3;
-                    if (value instanceof Float || value instanceof Long || value instanceof Integer) return 2;
-                    return -1;
+                    if (value instanceof Double) return MATCH_SCORE_EXACT;
+                    if (value instanceof Float || value instanceof Long || value instanceof Integer) return MATCH_SCORE_WIDENING;
+                    return MATCH_SCORE_NONE;
                 case "byte":
-                    if (value instanceof Byte) return 3;
-                    return -1;
+                    if (value instanceof Byte) return MATCH_SCORE_EXACT;
+                    return MATCH_SCORE_NONE;
                 case "short":
-                    if (value instanceof Short) return 3;
-                    if (value instanceof Byte) return 2;
-                    return -1;
+                    if (value instanceof Short) return MATCH_SCORE_EXACT;
+                    if (value instanceof Byte) return MATCH_SCORE_WIDENING;
+                    return MATCH_SCORE_NONE;
                 case "char":
-                    if (value instanceof Character) return 3;
-                    return -1;
+                    if (value instanceof Character) return MATCH_SCORE_EXACT;
+                    return MATCH_SCORE_NONE;
                 case "boolean":
-                    if (value instanceof Boolean) return 3;
-                    return -1;
+                    if (value instanceof Boolean) return MATCH_SCORE_EXACT;
+                    return MATCH_SCORE_NONE;
             }
         }
         
-        if (typeName.equals("boolean") && value instanceof Boolean) return 3;
-        if (typeName.equals("char") && value instanceof Character) return 3;
+        if (typeName.equals("boolean") && value instanceof Boolean) return MATCH_SCORE_EXACT;
+        if (typeName.equals("char") && value instanceof Character) return MATCH_SCORE_EXACT;
         
-        return -1;
+        return MATCH_SCORE_NONE;
     }
     
     private boolean isWideningConvertible(Number num, String targetType) {
@@ -416,45 +422,11 @@ public class ScriptClass {
     }
     
     private boolean isWrapperType(String typeName) {
-        return typeName.equals("Integer") || typeName.equals("java.lang.Integer") ||
-               typeName.equals("Long") || typeName.equals("java.lang.Long") ||
-               typeName.equals("Double") || typeName.equals("java.lang.Double") ||
-               typeName.equals("Float") || typeName.equals("java.lang.Float") ||
-               typeName.equals("Boolean") || typeName.equals("java.lang.Boolean") ||
-               typeName.equals("Byte") || typeName.equals("java.lang.Byte") ||
-               typeName.equals("Short") || typeName.equals("java.lang.Short") ||
-               typeName.equals("Character") || typeName.equals("java.lang.Character");
+        return TypeConstants.isWrapperType(typeName);
     }
     
     private Class<?> getWrapperClass(String typeName) {
-        switch (typeName) {
-            case "Integer":
-            case "java.lang.Integer":
-                return Integer.class;
-            case "Long":
-            case "java.lang.Long":
-                return Long.class;
-            case "Double":
-            case "java.lang.Double":
-                return Double.class;
-            case "Float":
-            case "java.lang.Float":
-                return Float.class;
-            case "Boolean":
-            case "java.lang.Boolean":
-                return Boolean.class;
-            case "Byte":
-            case "java.lang.Byte":
-                return Byte.class;
-            case "Short":
-            case "java.lang.Short":
-                return Short.class;
-            case "Character":
-            case "java.lang.Character":
-                return Character.class;
-            default:
-                return null;
-        }
+        return TypeConstants.getWrapperClass(typeName);
     }
     
     private boolean isBoxingCompatible(Object value, String typeName) {
@@ -506,10 +478,7 @@ public class ScriptClass {
     }
     
     private boolean isPrimitiveType(String typeName) {
-        return typeName.equals("int") || typeName.equals("long") || 
-               typeName.equals("short") || typeName.equals("byte") ||
-               typeName.equals("char") || typeName.equals("boolean") ||
-               typeName.equals("float") || typeName.equals("double");
+        return TypeConstants.isPrimitiveType(typeName);
     }
     
     public boolean isAssignableFrom(ScriptClass other) {

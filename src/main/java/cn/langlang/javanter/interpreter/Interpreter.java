@@ -13,6 +13,7 @@ import cn.langlang.javanter.interpreter.executor.DeclarationExecutor;
 import cn.langlang.javanter.interpreter.executor.StatementExecutor;
 import cn.langlang.javanter.lexer.TokenType;
 import cn.langlang.javanter.parser.Modifier;
+import cn.langlang.javanter.runtime.TypeConstants;
 import cn.langlang.javanter.runtime.environment.Environment;
 import cn.langlang.javanter.runtime.model.*;
 import cn.langlang.javanter.runtime.nativesupport.NativeMethod;
@@ -314,16 +315,7 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
     
     private Object getDefaultValue(cn.langlang.javanter.ast.type.Type type) {
         if (type == null) return null;
-        String typeName = type.getName();
-        if (typeName.equals("int")) return 0;
-        if (typeName.equals("long")) return 0L;
-        if (typeName.equals("double")) return 0.0;
-        if (typeName.equals("float")) return 0.0f;
-        if (typeName.equals("boolean")) return false;
-        if (typeName.equals("char")) return '\0';
-        if (typeName.equals("byte")) return (byte) 0;
-        if (typeName.equals("short")) return (short) 0;
-        return null;
+        return TypeConstants.getDefaultValue(type.getName());
     }
     
     private ScriptMethod findMainMethod(String className) {
@@ -336,7 +328,7 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
                 method.getParameters().size() == 1) {
                 Type paramType = method.getParameters().get(0).getType();
                 String typeName = paramType.getName();
-                if ((typeName.equals("String") || typeName.equals("java.lang.String")) &&
+                if ((typeName.equals(TypeConstants.STRING) || typeName.equals(TypeConstants.STRING_QUALIFIED)) &&
                     paramType.getArrayDimensions() == 1) {
                     return method;
                 }
