@@ -1,13 +1,14 @@
 # Javanter
 
-[![Java](https://img.shields.io/badge/Java-8%2B-blue.svg)](https://www.java.com/)
+[![Java](https://img.shields.io/badge/Java-17%2B-blue.svg)](https://www.java.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-A Java interpreter written in pure Java, supporting Java 8 syntax including Lambda expressions and method references.
+A Java interpreter written in pure Java, supporting Java 17 syntax including records, sealed classes, pattern matching, and more.
 
 ## Features
 
-- **Java 8 Syntax Support**: Full support for Lambda expressions (`x -> x * 2`) and method references (`String::compareTo`)
+- **Java 17 Syntax Support**: Full support for modern Java features including records, sealed classes, pattern matching, switch expressions, text blocks, and var keyword
+- **Java 8+ Features**: Lambda expressions (`x -> x * 2`) and method references (`String::compareTo`)
 - **Complete Generics System**: Type erasure, bridge method generation, type inference
 - **Annotation Processing**: Built-in Lombok-style annotation processor (`@Data` auto-generates getters/setters)
 - **Static Analysis**: Pre-execution checks for undefined variables, static context errors, etc.
@@ -31,12 +32,19 @@ interpreter.execute("List<Integer> nums = Arrays.asList(1, 2, 3); nums.forEach(x
 
 | Feature | Javanter | BeanShell |
 |---------|----------|-----------|
+| Java Version | 17 | 7 |
 | Lambda `->` | Supported | Not supported |
 | Method reference `::` | Supported | Not supported |
+| `var` keyword | Supported | Not supported |
+| Records | Supported | Not supported |
+| Sealed classes | Supported | Not supported |
+| Switch expressions | Supported | Not supported |
+| Text blocks | Supported | Not supported |
+| Pattern matching | Supported | Not supported |
+| Private interface methods | Supported | Not supported |
 | Generics | Full support | Partial |
 | Annotation processing | Built-in | Not built-in |
 | Static analysis | Yes | No |
-| Java version | 8+ | 7 |
 
 ## Core Architecture
 
@@ -212,13 +220,18 @@ src/main/java/cn/langlang/javainterpreter/
 
 | Category | Features |
 |----------|----------|
-| Types | Classes, interfaces, enums, annotations, generics |
+| Types | Classes, interfaces, enums, annotations, generics, records, sealed classes |
 | Members | Fields, methods, constructors, static initializers |
-| Control | if/else, while, for, do/while, switch |
+| Control | if/else, while, for, do/while, switch, switch expressions |
 | Exceptions | try/catch/finally, throw, multi-catch |
-| Expressions | Lambda, method reference, ternary, assignments |
-| Modifiers | public, private, protected, static, final, synchronized |
-| Advanced | Anonymous classes, local classes, static imports |
+| Expressions | Lambda, method reference, ternary, assignments, pattern matching |
+| Modifiers | public, private, protected, static, final, synchronized, sealed, non-sealed |
+| Advanced | Anonymous classes, local classes, static imports, text blocks |
+| Java 10+ | var keyword for local variable type inference |
+| Java 14+ | Switch expressions with arrow syntax, yield statement |
+| Java 15+ | Text blocks (multi-line strings) |
+| Java 16+ | Records, pattern matching for instanceof |
+| Java 17+ | Sealed classes and interfaces |
 
 ## Limitations
 

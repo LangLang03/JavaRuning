@@ -1,13 +1,14 @@
 # Javanter
 
-[![Java](https://img.shields.io/badge/Java-8%2B-blue.svg)](https://www.java.com/)
+[![Java](https://img.shields.io/badge/Java-17%2B-blue.svg)](https://www.java.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-纯 Java 编写的 Java 解释器，完整支持 Java 8 语法，包括 Lambda 表达式和方法引用。
+纯 Java 编写的 Java 解释器，完整支持 Java 17 语法，包括记录类、密封类、模式匹配等现代特性。
 
 ## 功能特性
 
-- **Java 8 语法支持**: 完整支持 Lambda 表达式 (`x -> x * 2`) 和方法引用 (`String::compareTo`)
+- **Java 17 语法支持**: 完整支持记录类、密封类、模式匹配、switch 表达式、文本块、var 关键字等现代 Java 特性
+- **Java 8+ 特性**: Lambda 表达式 (`x -> x * 2`) 和方法引用 (`String::compareTo`)
 - **完整泛型系统**: 类型擦除、桥接方法生成、类型推断
 - **注解处理**: 内置 Lombok 风格注解处理器 (`@Data` 自动生成 getter/setter)
 - **静态分析**: 执行前检查变量未定义、静态上下文错误等
@@ -31,12 +32,19 @@ interpreter.execute("List<Integer> nums = Arrays.asList(1, 2, 3); nums.forEach(x
 
 | 功能 | Javanter | BeanShell |
 |------|----------|-----------|
+| Java 版本 | 17 | 7 |
 | Lambda `->` | 支持 | 不支持 |
 | 方法引用 `::` | 支持 | 不支持 |
+| `var` 关键字 | 支持 | 不支持 |
+| 记录类 (Record) | 支持 | 不支持 |
+| 密封类 (Sealed) | 支持 | 不支持 |
+| Switch 表达式 | 支持 | 不支持 |
+| 文本块 | 支持 | 不支持 |
+| 模式匹配 | 支持 | 不支持 |
+| 私有接口方法 | 支持 | 不支持 |
 | 泛型 | 完整支持 | 部分支持 |
 | 注解处理 | 内置 | 非内置 |
 | 静态分析 | 支持 | 不支持 |
-| Java 版本 | 8+ | 7 |
 
 ## 核心架构
 
@@ -212,13 +220,18 @@ src/main/java/cn/langlang/javainterpreter/
 
 | 类别 | 特性 |
 |------|------|
-| 类型 | 类、接口、枚举、注解、泛型 |
+| 类型 | 类、接口、枚举、注解、泛型、记录类、密封类 |
 | 成员 | 字段、方法、构造器、静态初始化块 |
-| 控制流 | if/else、while、for、do/while、switch |
+| 控制流 | if/else、while、for、do/while、switch、switch 表达式 |
 | 异常 | try/catch/finally、throw、multi-catch |
-| 表达式 | Lambda、方法引用、三元、赋值 |
-| 修饰符 | public、private、protected、static、final、synchronized |
-| 高级 | 匿名类、局部类、静态导入 |
+| 表达式 | Lambda、方法引用、三元、赋值、模式匹配 |
+| 修饰符 | public、private、protected、static、final、synchronized、sealed、non-sealed |
+| 高级 | 匿名类、局部类、静态导入、文本块 |
+| Java 10+ | var 关键字用于局部变量类型推断 |
+| Java 14+ | Switch 表达式（箭头语法）、yield 语句 |
+| Java 15+ | 文本块（多行字符串） |
+| Java 16+ | 记录类、instanceof 模式匹配 |
+| Java 17+ | 密封类和接口 |
 
 ## 已知限制
 
