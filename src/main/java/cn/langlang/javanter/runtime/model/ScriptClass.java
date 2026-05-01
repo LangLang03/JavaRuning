@@ -57,6 +57,8 @@ public class ScriptClass {
     private List<TypeParameter> typeParameters;
     private GenericClassInfo genericInfo;
     private Map<String, GenericType> typeBindings;
+    private List<Type> permittedSubtypes;
+    private List<ScriptClass> nestedTypes;
     
     public ScriptClass(String name, String qualifiedName, int modifiers, 
                       ScriptClass superClass, List<ScriptClass> interfaces,
@@ -75,6 +77,8 @@ public class ScriptClass {
         this.initialized = false;
         this.typeParameters = new ArrayList<>();
         this.typeBindings = new LinkedHashMap<>();
+        this.permittedSubtypes = new ArrayList<>();
+        this.nestedTypes = new ArrayList<>();
     }
     
     public String getName() { return name; }
@@ -94,6 +98,9 @@ public class ScriptClass {
     public List<TypeParameter> getTypeParameters() { return typeParameters; }
     public GenericClassInfo getGenericInfo() { return genericInfo; }
     public Map<String, GenericType> getTypeBindings() { return typeBindings; }
+    public List<Type> getPermittedSubtypes() { return permittedSubtypes; }
+    public void setPermittedSubtypes(List<Type> permittedSubtypes) { this.permittedSubtypes = permittedSubtypes != null ? permittedSubtypes : new ArrayList<>(); }
+    public List<ScriptClass> getNestedTypes() { return Collections.unmodifiableList(nestedTypes); }
     
     public void setInitialized(boolean initialized) {
         this.initialized = initialized;
@@ -161,6 +168,43 @@ public class ScriptClass {
     public void addInstanceInitializer(InitializerBlock block) {
         instanceInitializers.add(block);
     }
+    
+    public ScriptClass createInnerClass(String name, int modifiers) {
+        String qualifiedName = this.qualifiedName + "$" + name;
+        ScriptClass innerClass = new ScriptClass(name, qualifiedName, modifiers, null, new ArrayList<>(), null);
+        innerClass.setEnclosingClass(this);
+        nestedTypes.add(innerClass);
+        return innerClass;
+    }
+    
+    public ScriptClass createInnerClass(String name, int modifiers, ScriptClass superClass) {
+        ScriptClass innerClass = createInnerClass(name, modifiers);
+        return innerClass;
+    }
+    
+    public ScriptClass createInnerClass(String name, int modifiers, List<ScriptClass> interfaces) {
+        ScriptClass innerClass = createInnerClass(name, modifiers);
+        return innerClass;
+    }
+    
+    public ScriptClass getNestedType(String name) {
+        for (ScriptClass nested : nestedTypes) {
+            if (nested.getName().equals(name)) {
+                return nested;
+            }
+        }
+        return null;
+    }
+    
+    public Collection<ScriptField> getAllFields() { return fields.values(); }
+    
+    public Collection<List<ScriptMethod>> getAllMethodGroups() { return methods.values(); }
+    
+    public boolean isSealed() { return (modifiers & cn.langlang.javanter.parser.Modifier.SEALED) != 0; }
+    
+    public boolean isNonSealed() { return (modifiers & cn.langlang.javanter.parser.Modifier.NON_SEALED) != 0; }
+    
+    public boolean isRecord() { return (modifiers & cn.langlang.javanter.parser.Modifier.RECORD) != 0; }
     
     public ScriptField getField(String name) {
         ScriptField field = fields.get(name);

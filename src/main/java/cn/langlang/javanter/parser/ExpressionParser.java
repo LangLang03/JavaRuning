@@ -6,6 +6,7 @@ import cn.langlang.javanter.ast.base.ASTNode;
 import cn.langlang.javanter.ast.expression.*;
 import cn.langlang.javanter.ast.misc.*;
 import cn.langlang.javanter.ast.statement.BlockStatement;
+import cn.langlang.javanter.ast.statement.Statement;
 import cn.langlang.javanter.ast.type.*;
 import cn.langlang.javanter.ast.declaration.*;
 import java.util.*;
@@ -81,7 +82,15 @@ public class ExpressionParser {
             if (op == TokenType.INSTANCEOF) {
                 reader.advance();
                 Type type = typeParser.parseType();
-                left = new InstanceOfExpression(reader.previous(), left, type);
+                String patternVariable = null;
+                boolean hasPattern = false;
+                
+                if (reader.check(TokenType.IDENTIFIER)) {
+                    patternVariable = reader.advance().getLexeme();
+                    hasPattern = true;
+                }
+                
+                left = new InstanceOfExpression(reader.previous(), left, type, patternVariable, hasPattern);
             } else {
                 reader.advance();
                 Expression right = parseBinaryExpression(opPrecedence + 1);
@@ -405,6 +414,10 @@ public class ExpressionParser {
             return new SuperExpression(reader.previous(), null);
         }
         
+        if (reader.match(TokenType.SWITCH)) {
+            return parseSwitchExpression();
+        }
+        
         if (reader.check(TokenType.INT) || reader.check(TokenType.LONG) || reader.check(TokenType.SHORT) ||
             reader.check(TokenType.BYTE) || reader.check(TokenType.CHAR) || reader.check(TokenType.BOOLEAN) ||
             reader.check(TokenType.FLOAT) || reader.check(TokenType.DOUBLE)) {
@@ -715,6 +728,105 @@ public class ExpressionParser {
         
         reader.consume(TokenType.RBRACE, "Expected '}' after array initializer");
         return new ArrayInitializerExpression(token, elements);
+    }
+    
+    public Expression parseSwitchExpression() {
+        Token token = reader.previous();
+        reader.consume(TokenType.LPAREN, "Expected '(' after 'switch'");
+        Expression selector = parseExpression();
+        reader.consume(TokenType.RPAREN, "Expected ')' after selector");
+        reader.consume(TokenType.LBRACE, "Expected '{' after switch");
+        
+        List<SwitchExpression.SwitchCase> cases = new ArrayList<>();
+        
+        while (!reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
+            List<CaseLabel> labels = new ArrayList<>();
+            
+            if (reader.match(TokenType.DEFAULT)) {
+                labels.add(new CaseLabel(reader.previous(), true, new ArrayList<>()));
+            } else {
+                reader.consume(TokenType.CASE, "Expected 'case' or 'default'");
+                List<Expression> values = new ArrayList<>();
+                
+                do {
+                    values.add(parseLiteralOrIdentifier());
+                } while (reader.match(TokenType.COMMA));
+                
+                labels.add(new CaseLabel(token, false, values));
+            }
+            
+            boolean isArrow = reader.match(TokenType.ARROW);
+            ASTNode body;
+            
+            if (isArrow) {
+                if (reader.check(TokenType.LBRACE)) {
+                    reader.match(TokenType.LBRACE);
+                    body = statementParser.parseBlock();
+                } else if (!reader.check(TokenType.CASE) && !reader.check(TokenType.DEFAULT) &&
+                          !reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
+                    body = parseExpression();
+                } else {
+                    body = new LiteralExpression(reader.peek(), null);
+                }
+                reader.match(TokenType.SEMICOLON);
+            } else {
+                reader.consume(TokenType.COLON, "Expected ':' in switch expression");
+                List<Statement> statements = new ArrayList<>();
+                while (!reader.check(TokenType.CASE) && !reader.check(TokenType.DEFAULT) && 
+                       !reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
+                    statements.add(statementParser.parseStatement());
+                }
+                body = new BlockStatement(token, statements);
+            }
+            
+            cases.add(new SwitchExpression.SwitchCase(labels, body, isArrow));
+        }
+        
+        reader.consume(TokenType.RBRACE, "Expected '}' after switch");
+        return new SwitchExpression(token, selector, cases);
+    }
+    
+    private CaseLabel parseCaseLabelForExpression() {
+        Token token = reader.peek();
+        
+        if (reader.match(TokenType.DEFAULT)) {
+            return new CaseLabel(token, true, new ArrayList<>());
+        }
+        
+        reader.consume(TokenType.CASE, "Expected 'case' or 'default'");
+        List<Expression> values = new ArrayList<>();
+        
+        if (reader.check(TokenType.NULL)) {
+            reader.advance();
+            values.add(new LiteralExpression(reader.previous(), null));
+        } else {
+            values.add(parseLiteralOrIdentifier());
+        }
+        
+        return new CaseLabel(token, false, values);
+    }
+    
+    private Expression parseLiteralOrIdentifier() {
+        if (reader.match(TokenType.INT_LITERAL)) {
+            return new LiteralExpression(reader.previous(), reader.previous().getLiteral());
+        } else if (reader.match(TokenType.LONG_LITERAL)) {
+            return new LiteralExpression(reader.previous(), reader.previous().getLiteral());
+        } else if (reader.match(TokenType.FLOAT_LITERAL)) {
+            return new LiteralExpression(reader.previous(), reader.previous().getLiteral());
+        } else if (reader.match(TokenType.DOUBLE_LITERAL)) {
+            return new LiteralExpression(reader.previous(), reader.previous().getLiteral());
+        } else if (reader.match(TokenType.CHAR_LITERAL)) {
+            return new LiteralExpression(reader.previous(), reader.previous().getLiteral());
+        } else if (reader.match(TokenType.STRING_LITERAL)) {
+            return new LiteralExpression(reader.previous(), reader.previous().getLiteral());
+        } else if (reader.match(TokenType.BOOLEAN_LITERAL)) {
+            return new LiteralExpression(reader.previous(), reader.previous().getLiteral());
+        } else if (reader.check(TokenType.IDENTIFIER)) {
+            Token token = reader.advance();
+            return new IdentifierExpression(token, token.getLexeme());
+        }
+        
+        return parsePrimaryExpression();
     }
     
     public List<Expression> parseArgumentList() {

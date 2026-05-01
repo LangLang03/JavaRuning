@@ -17,10 +17,17 @@ import java.util.*;
 
 public class StatementExecutor extends AbstractASTVisitor<Object> {
     private final Interpreter interpreter;
+    private boolean inSwitchExpression = false;
     
     public StatementExecutor(Interpreter interpreter) {
         this.interpreter = interpreter;
     }
+    
+    public void setInSwitchExpression(boolean inSwitchExpression) {
+        this.inSwitchExpression = inSwitchExpression;
+    }
+    
+    public boolean isInSwitchExpression() { return inSwitchExpression; }
     
     @Override
     public Object visitBlockStatement(BlockStatement node) {
@@ -148,6 +155,198 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
                     interpreter.setCurrentEnv(previous);
                 }
             }
+        } else if (iterable instanceof int[]) {
+            int[] array = (int[]) iterable;
+            for (int element : array) {
+                Environment previous = interpreter.getCurrentEnv();
+                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+                
+                try {
+                    LocalVariableDeclaration.VariableDeclarator declarator = 
+                        node.getVariable().getDeclarators().get(0);
+                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+                    
+                    try {
+                        node.getBody().accept(this);
+                    } catch (BreakException e) {
+                        if (e.getLabel() == null) break;
+                        throw e;
+                    } catch (ContinueException e) {
+                        if (e.getLabel() == null) continue;
+                        throw e;
+                    }
+                } finally {
+                    interpreter.setCurrentEnv(previous);
+                }
+            }
+        } else if (iterable instanceof long[]) {
+            long[] array = (long[]) iterable;
+            for (long element : array) {
+                Environment previous = interpreter.getCurrentEnv();
+                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+                
+                try {
+                    LocalVariableDeclaration.VariableDeclarator declarator = 
+                        node.getVariable().getDeclarators().get(0);
+                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+                    
+                    try {
+                        node.getBody().accept(this);
+                    } catch (BreakException e) {
+                        if (e.getLabel() == null) break;
+                        throw e;
+                    } catch (ContinueException e) {
+                        if (e.getLabel() == null) continue;
+                        throw e;
+                    }
+                } finally {
+                    interpreter.setCurrentEnv(previous);
+                }
+            }
+        } else if (iterable instanceof double[]) {
+            double[] array = (double[]) iterable;
+            for (double element : array) {
+                Environment previous = interpreter.getCurrentEnv();
+                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+                
+                try {
+                    LocalVariableDeclaration.VariableDeclarator declarator = 
+                        node.getVariable().getDeclarators().get(0);
+                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+                    
+                    try {
+                        node.getBody().accept(this);
+                    } catch (BreakException e) {
+                        if (e.getLabel() == null) break;
+                        throw e;
+                    } catch (ContinueException e) {
+                        if (e.getLabel() == null) continue;
+                        throw e;
+                    }
+                } finally {
+                    interpreter.setCurrentEnv(previous);
+                }
+            }
+        } else if (iterable instanceof float[]) {
+            float[] array = (float[]) iterable;
+            for (float element : array) {
+                Environment previous = interpreter.getCurrentEnv();
+                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+                
+                try {
+                    LocalVariableDeclaration.VariableDeclarator declarator = 
+                        node.getVariable().getDeclarators().get(0);
+                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+                    
+                    try {
+                        node.getBody().accept(this);
+                    } catch (BreakException e) {
+                        if (e.getLabel() == null) break;
+                        throw e;
+                    } catch (ContinueException e) {
+                        if (e.getLabel() == null) continue;
+                        throw e;
+                    }
+                } finally {
+                    interpreter.setCurrentEnv(previous);
+                }
+            }
+        } else if (iterable instanceof boolean[]) {
+            boolean[] array = (boolean[]) iterable;
+            for (boolean element : array) {
+                Environment previous = interpreter.getCurrentEnv();
+                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+                
+                try {
+                    LocalVariableDeclaration.VariableDeclarator declarator = 
+                        node.getVariable().getDeclarators().get(0);
+                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+                    
+                    try {
+                        node.getBody().accept(this);
+                    } catch (BreakException e) {
+                        if (e.getLabel() == null) break;
+                        throw e;
+                    } catch (ContinueException e) {
+                        if (e.getLabel() == null) continue;
+                        throw e;
+                    }
+                } finally {
+                    interpreter.setCurrentEnv(previous);
+                }
+            }
+        } else if (iterable instanceof char[]) {
+            char[] array = (char[]) iterable;
+            for (char element : array) {
+                Environment previous = interpreter.getCurrentEnv();
+                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+                
+                try {
+                    LocalVariableDeclaration.VariableDeclarator declarator = 
+                        node.getVariable().getDeclarators().get(0);
+                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+                    
+                    try {
+                        node.getBody().accept(this);
+                    } catch (BreakException e) {
+                        if (e.getLabel() == null) break;
+                        throw e;
+                    } catch (ContinueException e) {
+                        if (e.getLabel() == null) continue;
+                        throw e;
+                    }
+                } finally {
+                    interpreter.setCurrentEnv(previous);
+                }
+            }
+        } else if (iterable instanceof short[]) {
+            short[] array = (short[]) iterable;
+            for (short element : array) {
+                Environment previous = interpreter.getCurrentEnv();
+                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+                
+                try {
+                    LocalVariableDeclaration.VariableDeclarator declarator = 
+                        node.getVariable().getDeclarators().get(0);
+                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+                    
+                    try {
+                        node.getBody().accept(this);
+                    } catch (BreakException e) {
+                        if (e.getLabel() == null) break;
+                        throw e;
+                    } catch (ContinueException e) {
+                        if (e.getLabel() == null) continue;
+                        throw e;
+                    }
+                } finally {
+                    interpreter.setCurrentEnv(previous);
+                }
+            }
+        } else if (iterable instanceof byte[]) {
+            byte[] array = (byte[]) iterable;
+            for (byte element : array) {
+                Environment previous = interpreter.getCurrentEnv();
+                interpreter.setCurrentEnv(interpreter.getCurrentEnv().push());
+                
+                try {
+                    LocalVariableDeclaration.VariableDeclarator declarator = 
+                        node.getVariable().getDeclarators().get(0);
+                    interpreter.getCurrentEnv().defineVariable(declarator.getName(), element);
+                    
+                    try {
+                        node.getBody().accept(this);
+                    } catch (BreakException e) {
+                        if (e.getLabel() == null) break;
+                        throw e;
+                    } catch (ContinueException e) {
+                        if (e.getLabel() == null) continue;
+                        throw e;
+                    }
+                } finally {
+                    interpreter.setCurrentEnv(previous);
+                }
+            }
         } else if (iterable instanceof Iterable) {
             for (Object element : (Iterable<?>) iterable) {
                 Environment previous = interpreter.getCurrentEnv();
@@ -202,20 +401,30 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
         }
         
         if (matchedCase != null) {
-            boolean shouldExecute = false;
-            for (SwitchStatement.SwitchCase switchCase : node.getCases()) {
-                if (switchCase == matchedCase) {
-                    shouldExecute = true;
+            if (matchedCase.isArrow()) {
+                try {
+                    for (Statement stmt : matchedCase.getStatements()) {
+                        stmt.accept(this);
+                    }
+                } catch (BreakException e) {
+                    // ignore break for arrow syntax
                 }
-                
-                if (shouldExecute) {
-                    try {
-                        for (Statement stmt : switchCase.getStatements()) {
-                            stmt.accept(this);
+            } else {
+                boolean shouldExecute = false;
+                for (SwitchStatement.SwitchCase switchCase : node.getCases()) {
+                    if (switchCase == matchedCase) {
+                        shouldExecute = true;
+                    }
+                    
+                    if (shouldExecute) {
+                        try {
+                            for (Statement stmt : switchCase.getStatements()) {
+                                stmt.accept(this);
+                            }
+                        } catch (BreakException e) {
+                            if (e.getLabel() == null) break;
+                            throw e;
                         }
-                    } catch (BreakException e) {
-                        if (e.getLabel() == null) break;
-                        throw e;
                     }
                 }
             }
@@ -520,6 +729,15 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
     }
     
     @Override
+    public Object visitYieldStatement(YieldStatement node) {
+        if (!inSwitchExpression) {
+            throw new RuntimeException("yield statement is only allowed inside a switch expression");
+        }
+        Object value = node.getValue().accept(interpreter.getExpressionEvaluator());
+        throw new YieldException(value);
+    }
+    
+    @Override
     public Object visitLabelStatement(LabelStatement node) {
         try {
             return node.getStatement().accept(this);
@@ -548,7 +766,7 @@ public class StatementExecutor extends AbstractASTVisitor<Object> {
     
     @Override
     public Object visitLocalClassDeclarationStatement(LocalClassDeclarationStatement node) {
-        return node.getClassDeclaration().accept(interpreter.getDeclarationExecutor());
+        return node.getTypeDeclaration().accept(interpreter.getDeclarationExecutor());
     }
     
     @Override

@@ -1033,6 +1033,21 @@ public class Interpreter implements ASTVisitor<Object>, ExecutionContext {
     }
     
     @Override
+    public Object visitSwitchExpression(SwitchExpression node) {
+        return node.accept(expressionEvaluator);
+    }
+    
+    @Override
+    public Object visitRecordDeclaration(RecordDeclaration node) {
+        return node.accept(declarationExecutor);
+    }
+    
+    @Override
+    public Object visitYieldStatement(YieldStatement node) {
+        return node.accept(statementExecutor);
+    }
+    
+    @Override
     public ScriptClass resolveClass(Type type) {
         String name = type.getName();
         

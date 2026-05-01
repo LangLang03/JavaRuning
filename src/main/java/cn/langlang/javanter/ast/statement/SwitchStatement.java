@@ -27,13 +27,20 @@ public class SwitchStatement extends Statement {
     public static class SwitchCase {
         private final CaseLabel label;
         private final List<Statement> statements;
+        private final boolean isArrow;
         
         public SwitchCase(CaseLabel label, List<Statement> statements) {
+            this(label, statements, false);
+        }
+        
+        public SwitchCase(CaseLabel label, List<Statement> statements, boolean isArrow) {
             this.label = label;
             this.statements = statements != null ? statements : new ArrayList<>();
+            this.isArrow = isArrow;
         }
         
         public CaseLabel getLabel() { return label; }
         public List<Statement> getStatements() { return statements; }
+        public boolean isArrow() { return isArrow; }
     }
 }

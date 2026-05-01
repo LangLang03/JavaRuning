@@ -6,13 +6,16 @@ import cn.langlang.javanter.ast.base.ASTVisitor;
 import cn.langlang.javanter.ast.declaration.*;
 import cn.langlang.javanter.ast.expression.*;
 import cn.langlang.javanter.ast.misc.Annotation;
+import cn.langlang.javanter.ast.misc.CaseLabel;
 import cn.langlang.javanter.ast.misc.EnumConstant;
 import cn.langlang.javanter.ast.statement.BlockStatement;
 import cn.langlang.javanter.ast.statement.LocalVariableDeclaration;
 import cn.langlang.javanter.ast.statement.LocalClassDeclarationStatement;
+import cn.langlang.javanter.ast.statement.YieldStatement;
 import cn.langlang.javanter.ast.type.Type;
 import cn.langlang.javanter.interpreter.Interpreter;
 import cn.langlang.javanter.interpreter.exception.ReturnException;
+import cn.langlang.javanter.interpreter.exception.YieldException;
 import cn.langlang.javanter.lexer.TokenType;
 import cn.langlang.javanter.parser.Modifier;
 import cn.langlang.javanter.runtime.environment.Environment;
@@ -1281,33 +1284,39 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     public Object visitInstanceOfExpression(InstanceOfExpression node) {
         Object value = node.getExpression().accept(this);
         
-        if (value == null) return false;
+        if (value == null && !node.hasPattern()) return false;
         
         Type checkType = node.getType();
         ScriptClass checkClass = interpreter.resolveClass(checkType);
+        
+        boolean result = false;
         
         if (checkClass == null) {
             String typeName = checkType.getName();
             int arrayDims = checkType.getArrayDimensions();
             
             if (arrayDims > 0) {
-                return checkArrayInstance(value, typeName);
+                result = checkArrayInstance(value, typeName);
+            } else {
+                Class<?> typeClass = typeRegistry.getClassLiteral(typeName);
+                if (typeClass != null) {
+                    result = typeClass.isInstance(value);
+                } else {
+                    result = typeRegistry.isInstance(value, typeName);
+                }
             }
-            
-            Class<?> typeClass = typeRegistry.getClassLiteral(typeName);
-            if (typeClass != null) {
-                return typeClass.isInstance(value);
+        } else {
+            if (value instanceof RuntimeObject) {
+                ScriptClass valueClass = ((RuntimeObject) value).getScriptClass();
+                result = checkClass.isAssignableFrom(valueClass);
             }
-            
-            return typeRegistry.isInstance(value, typeName);
         }
         
-        if (value instanceof RuntimeObject) {
-            ScriptClass valueClass = ((RuntimeObject) value).getScriptClass();
-            return checkClass.isAssignableFrom(valueClass);
+        if (result && node.hasPattern() && node.getPatternVariable() != null) {
+            interpreter.getCurrentEnv().defineVariable(node.getPatternVariable(), value);
         }
         
-        return false;
+        return result;
     }
     
     private boolean checkArrayInstance(Object value, String typeName) {
@@ -1456,6 +1465,84 @@ public class ExpressionEvaluator extends AbstractASTVisitor<Object> {
     @Override
     public Object visitEnumConstant(EnumConstant node) {
         return null;
+    }
+    
+    @Override
+    public Object visitSwitchExpression(SwitchExpression node) {
+        Object selectorValue = node.getSelector().accept(this);
+        
+        interpreter.getStatementExecutor().setInSwitchExpression(true);
+        try {
+            for (SwitchExpression.SwitchCase switchCase : node.getCases()) {
+                boolean matched = false;
+                
+                for (CaseLabel label : switchCase.getLabels()) {
+                    if (label.isDefault()) {
+                        matched = true;
+                        break;
+                    }
+                    
+                    for (Expression caseValue : label.getValues()) {
+                        Object caseVal = caseValue.accept(this);
+                        if (isSwitchMatch(selectorValue, caseVal)) {
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (matched) break;
+                }
+                
+                if (matched) {
+                    ASTNode body = switchCase.getBody();
+                    if (body instanceof Expression) {
+                        return ((Expression) body).accept(this);
+                    } else if (body instanceof BlockStatement) {
+                        try {
+                            body.accept(interpreter.getStatementExecutor());
+                        } catch (YieldException e) {
+                            return e.getValue();
+                        }
+                        return null;
+                    } else if (body != null) {
+                        body.accept(interpreter.getStatementExecutor());
+                    }
+                    
+                    if (switchCase.isArrow()) {
+                        break;
+                    }
+                }
+            }
+        } finally {
+            interpreter.getStatementExecutor().setInSwitchExpression(false);
+        }
+        
+        return null;
+    }
+    
+    private boolean isSwitchMatch(Object value, Object caseVal) {
+        if (value == null && caseVal == null) return true;
+        if (value == null || caseVal == null) return false;
+        
+        if (value instanceof String && caseVal instanceof String) {
+            return value.equals(caseVal);
+        }
+        if (value instanceof Number && caseVal instanceof Number) {
+            return compareNumbers(value, caseVal) == 0;
+        }
+        if (value instanceof Character && caseVal instanceof Character) {
+            return value.equals(caseVal);
+        }
+        return Objects.equals(value, caseVal);
+    }
+    
+    @Override
+    public Object visitRecordDeclaration(RecordDeclaration node) {
+        return interpreter.getDeclarationExecutor().visitRecordDeclaration(node);
+    }
+    
+    @Override
+    public Object visitYieldStatement(YieldStatement node) {
+        return interpreter.getStatementExecutor().visitYieldStatement(node);
     }
     
     @Override

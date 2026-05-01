@@ -64,4 +64,7 @@ public abstract class AbstractASTVisitor<R> implements ASTVisitor<R> {
     @Override public R visitTypeArgument(TypeArgument node) { return null; }
     @Override public R visitAnnotation(Annotation node) { return null; }
     @Override public R visitEnumConstant(EnumConstant node) { return null; }
+    @Override public R visitSwitchExpression(SwitchExpression node) { return null; }
+    @Override public R visitRecordDeclaration(RecordDeclaration node) { return null; }
+    @Override public R visitYieldStatement(YieldStatement node) { return null; }
 }

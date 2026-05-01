@@ -15,12 +15,25 @@ public class ClassDeclaration extends TypeDeclaration {
     private final List<ConstructorDeclaration> constructors;
     private final List<InitializerBlock> initializers;
     private final List<TypeDeclaration> nestedTypes;
+    private final boolean isSealed;
+    private final boolean isNonSealed;
+    private final List<Type> permittedSubtypes;
     
     public ClassDeclaration(Token token, String name, int modifiers, List<Annotation> annotations,
                            List<TypeParameter> typeParameters, Type superClass, List<Type> interfaces,
                            List<FieldDeclaration> fields, List<MethodDeclaration> methods,
                            List<ConstructorDeclaration> constructors, List<InitializerBlock> initializers,
                            List<TypeDeclaration> nestedTypes) {
+        this(token, name, modifiers, annotations, typeParameters, superClass, interfaces,
+             fields, methods, constructors, initializers, nestedTypes, false, false, new ArrayList<>());
+    }
+    
+    public ClassDeclaration(Token token, String name, int modifiers, List<Annotation> annotations,
+                           List<TypeParameter> typeParameters, Type superClass, List<Type> interfaces,
+                           List<FieldDeclaration> fields, List<MethodDeclaration> methods,
+                           List<ConstructorDeclaration> constructors, List<InitializerBlock> initializers,
+                           List<TypeDeclaration> nestedTypes, boolean isSealed, boolean isNonSealed,
+                           List<Type> permittedSubtypes) {
         super(token, name, modifiers, annotations, typeParameters);
         this.superClass = superClass;
         this.interfaces = interfaces != null ? interfaces : new ArrayList<>();
@@ -29,6 +42,9 @@ public class ClassDeclaration extends TypeDeclaration {
         this.constructors = constructors != null ? constructors : new ArrayList<>();
         this.initializers = initializers != null ? initializers : new ArrayList<>();
         this.nestedTypes = nestedTypes != null ? nestedTypes : new ArrayList<>();
+        this.isSealed = isSealed;
+        this.isNonSealed = isNonSealed;
+        this.permittedSubtypes = permittedSubtypes != null ? permittedSubtypes : new ArrayList<>();
     }
     
     public Type getSuperClass() { return superClass; }
@@ -38,6 +54,9 @@ public class ClassDeclaration extends TypeDeclaration {
     public List<ConstructorDeclaration> getConstructors() { return constructors; }
     public List<InitializerBlock> getInitializers() { return initializers; }
     public List<TypeDeclaration> getNestedTypes() { return nestedTypes; }
+    public boolean isSealed() { return isSealed; }
+    public boolean isNonSealed() { return isNonSealed; }
+    public List<Type> getPermittedSubtypes() { return permittedSubtypes; }
     
     @Override
     public <R> R accept(ASTVisitor<R> visitor) {

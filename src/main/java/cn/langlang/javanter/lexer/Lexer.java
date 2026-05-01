@@ -109,6 +109,12 @@ public class Lexer {
         keywords.put("true", TokenType.TRUE);
         keywords.put("false", TokenType.FALSE);
         keywords.put("null", TokenType.NULL);
+        keywords.put("var", TokenType.VAR);
+        keywords.put("record", TokenType.RECORD);
+        keywords.put("sealed", TokenType.SEALED);
+        keywords.put("permits", TokenType.PERMITS);
+        keywords.put("yield", TokenType.YIELD);
+        keywords.put("non-sealed", TokenType.NON_SEALED);
     }
 
     /**
@@ -306,7 +312,13 @@ public class Lexer {
             case '~':
                 addToken(TokenType.TILDE);
                 break;
-            case '"': scanString(); break;
+            case '"':
+                if (match('"') && match('"')) {
+                    scanTextBlock();
+                } else {
+                    scanString();
+                }
+                break;
             case '\'': scanChar(); break;
             default:
                 if (isDigit(c)) {
@@ -354,6 +366,120 @@ public class Lexer {
         }
         advance();
         addToken(TokenType.STRING_LITERAL, value.toString());
+    }
+    
+    private void scanTextBlock() {
+        StringBuilder value = new StringBuilder();
+        
+        if (peek() == '\n') {
+            advance();
+            line++;
+            column = 1;
+        }
+        
+        int minIndent = Integer.MAX_VALUE;
+        List<String> lines = new ArrayList<>();
+        StringBuilder currentLine = new StringBuilder();
+        
+        while (true) {
+            if (isAtEnd()) {
+                throw new LexerException("Unterminated text block at line " + line);
+            }
+            
+            char c = peek();
+            
+            if (c == '"' && peekNext() == '"' && peekNextNext() == '"') {
+                String lineContent = currentLine.toString();
+                if (!lineContent.trim().isEmpty()) {
+                    lines.add(lineContent);
+                }
+                break;
+            }
+            
+            if (c == '\n') {
+                String lineContent = currentLine.toString();
+                int indent = calculateIndent(lineContent);
+                if (!lineContent.trim().isEmpty() && indent < minIndent) {
+                    minIndent = indent;
+                }
+                lines.add(lineContent);
+                currentLine = new StringBuilder();
+                advance();
+                line++;
+                column = 1;
+            } else if (c == '\\') {
+                advance();
+                if (peek() == '\n') {
+                    advance();
+                    line++;
+                    column = 1;
+                    while (peek() == ' ' || peek() == '\t') {
+                        advance();
+                    }
+                } else if (peek() == 's') {
+                    advance();
+                    currentLine.append(' ');
+                } else if (peek() == '"') {
+                    advance();
+                    currentLine.append('"');
+                } else if (peek() == '\'') {
+                    advance();
+                    currentLine.append('\'');
+                } else if (peek() == '\\') {
+                    advance();
+                    currentLine.append('\\');
+                } else {
+                    currentLine.append(scanEscapeSequence());
+                }
+            } else {
+                currentLine.append(advance());
+            }
+        }
+        
+        for (int i = 0; i < 3; i++) {
+            advance();
+        }
+        
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < lines.size(); i++) {
+            String lineContent = lines.get(i);
+            if (!lineContent.trim().isEmpty()) {
+                result.append(stripIndent(lineContent, minIndent));
+            }
+            if (i < lines.size() - 1) {
+                result.append('\n');
+            }
+        }
+        
+        addToken(TokenType.STRING_LITERAL, result.toString());
+    }
+    
+    private int calculateIndent(String line) {
+        int indent = 0;
+        for (char c : line.toCharArray()) {
+            if (c == ' ') indent++;
+            else if (c == '\t') indent += 4;
+            else break;
+        }
+        return indent;
+    }
+    
+    private String stripIndent(String line, int minIndent) {
+        int removed = 0;
+        StringBuilder result = new StringBuilder();
+        for (char c : line.toCharArray()) {
+            if ((c == ' ' || c == '\t') && removed < minIndent) {
+                removed += (c == '\t' ? 4 : 1);
+            } else {
+                result.append(c);
+            }
+        }
+        return result.toString();
+    }
+    
+    private char peekNextNext() {
+        if (current + 2 >= source.length()) return '\0';
+        return source.charAt(current + 2);
     }
     
     private void scanChar() {

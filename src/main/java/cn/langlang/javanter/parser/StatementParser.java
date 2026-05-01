@@ -63,6 +63,10 @@ public class StatementParser {
             return parseSwitchStatement();
         }
         
+        if (reader.match(TokenType.YIELD)) {
+            return parseYieldStatement();
+        }
+        
         if (reader.match(TokenType.RETURN)) {
             return parseReturnStatement();
         }
@@ -125,18 +129,35 @@ public class StatementParser {
             return parseLocalVariableDeclaration();
         }
         
+        if (isLocalTypeDeclaration()) {
+            TypeDeclaration typeDecl = parseTypeDeclaration();
+            return new LocalClassDeclarationStatement(typeDecl.getToken(), typeDecl);
+        }
+        
         if (isLocalVariableDeclaration()) {
             return parseLocalVariableDeclaration();
         }
         
-        if (reader.check(TokenType.CLASS)) {
-            TypeDeclaration typeDecl = parseTypeDeclaration();
-            if (typeDecl instanceof ClassDeclaration) {
-                return new LocalClassDeclarationStatement(typeDecl.getToken(), (ClassDeclaration) typeDecl);
-            }
-        }
-        
         return parseExpressionStatement();
+    }
+    
+    private boolean isLocalTypeDeclaration() {
+        int save = reader.getCurrentPosition();
+        try {
+            modifierAndAnnotationParser.parseAnnotations();
+            modifierAndAnnotationParser.parseModifiers();
+            
+            if (reader.check(TokenType.CLASS) || reader.check(TokenType.INTERFACE) || 
+                reader.check(TokenType.ENUM) || reader.check(TokenType.RECORD) ||
+                reader.check(TokenType.AT) || reader.check(TokenType.SEALED) ||
+                reader.check(TokenType.NON_SEALED)) {
+                return true;
+            }
+            
+            return false;
+        } finally {
+            reader.setCurrentPosition(save);
+        }
     }
     
     public ExpressionStatement parseExpressionStatementWithPrefix(Expression prefix) {
@@ -160,9 +181,19 @@ public class StatementParser {
             modifierAndAnnotationParser.parseAnnotations();
             modifierAndAnnotationParser.parseModifiers();
             
+            if (reader.check(TokenType.CLASS) || reader.check(TokenType.INTERFACE) || 
+                reader.check(TokenType.ENUM) || reader.check(TokenType.RECORD) ||
+                reader.check(TokenType.SEALED) || reader.check(TokenType.NON_SEALED)) {
+                return false;
+            }
+            
             if (reader.check(TokenType.INT) || reader.check(TokenType.LONG) || reader.check(TokenType.SHORT) ||
                 reader.check(TokenType.BYTE) || reader.check(TokenType.CHAR) || reader.check(TokenType.BOOLEAN) ||
                 reader.check(TokenType.FLOAT) || reader.check(TokenType.DOUBLE)) {
+                return true;
+            }
+            
+            if (reader.check(TokenType.VAR)) {
                 return true;
             }
             
@@ -239,6 +270,14 @@ public class StatementParser {
                 return false;
             }
             
+            if (reader.check(TokenType.VAR)) {
+                reader.advance();
+                if (reader.check(TokenType.IDENTIFIER) && reader.checkNext(TokenType.COLON)) {
+                    return true;
+                }
+                return false;
+            }
+            
             if (reader.check(TokenType.IDENTIFIER)) {
                 reader.advance();
                 while (reader.check(TokenType.DOT) && reader.checkNext(TokenType.IDENTIFIER)) {
@@ -279,7 +318,15 @@ public class StatementParser {
         Token token = reader.peek();
         List<Annotation> annotations = modifierAndAnnotationParser.parseAnnotations();
         int modifiers = modifierAndAnnotationParser.parseModifiers();
-        Type type = typeParser.parseType();
+        
+        Type type;
+        boolean isVar = false;
+        if (reader.match(TokenType.VAR)) {
+            isVar = true;
+            type = new Type(reader.previous(), "var", new ArrayList<>(), 0, new ArrayList<>());
+        } else {
+            type = typeParser.parseType();
+        }
         
         List<LocalVariableDeclaration.VariableDeclarator> declarators = new ArrayList<>();
         
@@ -293,7 +340,14 @@ public class StatementParser {
             }
             
             Expression initializer = null;
-            if (reader.match(TokenType.ASSIGN)) {
+            if (isVar) {
+                reader.consume(TokenType.ASSIGN, "var must be initialized");
+                if (reader.match(TokenType.LBRACE)) {
+                    initializer = expressionParser.parseArrayInitializer();
+                } else {
+                    initializer = expressionParser.parseExpression();
+                }
+            } else if (reader.match(TokenType.ASSIGN)) {
                 if (reader.match(TokenType.LBRACE)) {
                     initializer = expressionParser.parseArrayInitializer();
                 } else {
@@ -387,7 +441,13 @@ public class StatementParser {
     public ForEachStatement parseForEachStatement(Token token) {
         List<Annotation> annotations = modifierAndAnnotationParser.parseAnnotations();
         int modifiers = modifierAndAnnotationParser.parseModifiers();
-        Type type = typeParser.parseType();
+        
+        Type type;
+        if (reader.match(TokenType.VAR)) {
+            type = new Type(reader.previous(), "var", new ArrayList<>(), 0, new ArrayList<>());
+        } else {
+            type = typeParser.parseType();
+        }
         
         String name = reader.consume(TokenType.IDENTIFIER, "Expected variable name").getLexeme();
         LocalVariableDeclaration.VariableDeclarator declarator = 
@@ -414,14 +474,33 @@ public class StatementParser {
         
         while (!reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
             CaseLabel label = parseCaseLabel();
-            List<Statement> statements = new ArrayList<>();
+            boolean isArrow = reader.match(TokenType.ARROW);
             
-            while (!reader.check(TokenType.CASE) && !reader.check(TokenType.DEFAULT) && 
-                   !reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
-                statements.add(parseStatement());
+            if (isArrow) {
+                Statement body;
+                if (reader.check(TokenType.LBRACE)) {
+                    reader.match(TokenType.LBRACE);
+                    body = parseBlock();
+                } else if (!reader.check(TokenType.CASE) && !reader.check(TokenType.DEFAULT) &&
+                          !reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
+                    body = parseStatement();
+                } else {
+                    body = new EmptyStatement(reader.peek());
+                }
+                List<Statement> statements = new ArrayList<>();
+                statements.add(body);
+                cases.add(new SwitchStatement.SwitchCase(label, statements, true));
+            } else {
+                reader.consume(TokenType.COLON, "Expected ':' after case label");
+                List<Statement> statements = new ArrayList<>();
+                
+                while (!reader.check(TokenType.CASE) && !reader.check(TokenType.DEFAULT) && 
+                       !reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
+                    statements.add(parseStatement());
+                }
+                
+                cases.add(new SwitchStatement.SwitchCase(label, statements));
             }
-            
-            cases.add(new SwitchStatement.SwitchCase(label, statements));
         }
         
         reader.consume(TokenType.RBRACE, "Expected '}' after switch body");
@@ -432,7 +511,6 @@ public class StatementParser {
         Token token = reader.peek();
         
         if (reader.match(TokenType.DEFAULT)) {
-            reader.consume(TokenType.COLON, "Expected ':' after 'default'");
             return new CaseLabel(token, true, new ArrayList<>());
         }
         
@@ -440,10 +518,14 @@ public class StatementParser {
         List<Expression> values = new ArrayList<>();
         
         do {
-            values.add(expressionParser.parseExpression());
+            if (reader.check(TokenType.NULL)) {
+                reader.advance();
+                values.add(new LiteralExpression(reader.previous(), null));
+            } else {
+                values.add(expressionParser.parseExpression());
+            }
         } while (reader.match(TokenType.COMMA));
         
-        reader.consume(TokenType.COLON, "Expected ':' after case value");
         return new CaseLabel(token, false, values);
     }
     
@@ -522,10 +604,18 @@ public class StatementParser {
         reader.consume(TokenType.LPAREN, "Expected '(' after 'catch'");
         
         List<Type> exceptionTypes = new ArrayList<>();
-        exceptionTypes.add(typeParser.parseType());
+        Type firstType = typeParser.parseType();
+        if (firstType.getName().equals("var")) {
+            throw new Parser.ParseError(firstType.getToken(), "'var' is not allowed in catch clause");
+        }
+        exceptionTypes.add(firstType);
         
         while (reader.match(TokenType.PIPE)) {
-            exceptionTypes.add(typeParser.parseType());
+            Type nextType = typeParser.parseType();
+            if (nextType.getName().equals("var")) {
+                throw new Parser.ParseError(nextType.getToken(), "'var' is not allowed in catch clause");
+            }
+            exceptionTypes.add(nextType);
         }
         
         String exceptionName = reader.consume(TokenType.IDENTIFIER, "Expected exception name").getLexeme();
@@ -586,6 +676,13 @@ public class StatementParser {
         return new ContinueStatement(token, label);
     }
     
+    public YieldStatement parseYieldStatement() {
+        Token token = reader.previous();
+        Expression value = expressionParser.parseExpression();
+        reader.consume(TokenType.SEMICOLON, "Expected ';' after yield");
+        return new YieldStatement(token, value);
+    }
+    
     public LabelStatement parseLabelStatement() {
         Token token = reader.peek();
         String label = reader.consume(TokenType.IDENTIFIER, "Expected label name").getLexeme();
@@ -610,18 +707,24 @@ public class StatementParser {
         List<Annotation> annotations = modifierAndAnnotationParser.parseAnnotations();
         int modifiers = modifierAndAnnotationParser.parseModifiers();
         
+        return parseTypeDeclarationWithModifiers(annotations, modifiers);
+    }
+    
+    private TypeDeclaration parseTypeDeclarationWithModifiers(List<Annotation> annotations, int modifiers) {
         if (reader.match(TokenType.CLASS)) {
             return parseClassDeclaration(annotations, modifiers);
         } else if (reader.match(TokenType.INTERFACE)) {
             return parseInterfaceDeclaration(annotations, modifiers);
         } else if (reader.match(TokenType.ENUM)) {
             return parseEnumDeclaration(annotations, modifiers);
+        } else if (reader.match(TokenType.RECORD)) {
+            return parseRecordDeclaration(annotations, modifiers);
         } else if (reader.match(TokenType.AT)) {
             reader.consume(TokenType.INTERFACE, "Expected 'interface' after '@'");
             return parseAnnotationDeclaration(annotations, modifiers);
         }
         
-        throw new Parser.ParseError(reader.peek(), "Expected class, interface, enum, or annotation declaration");
+        throw new Parser.ParseError(reader.peek(), "Expected class, interface, enum, record, or annotation declaration");
     }
     
     private ClassDeclaration parseClassDeclaration(List<Annotation> annotations, int modifiers) {
@@ -641,6 +744,11 @@ public class StatementParser {
         List<Type> interfaces = new ArrayList<>();
         if (reader.match(TokenType.IMPLEMENTS)) {
             interfaces = typeParser.parseTypeList();
+        }
+        
+        List<Type> permittedSubtypes = new ArrayList<>();
+        if (reader.match(TokenType.PERMITS)) {
+            permittedSubtypes = typeParser.parseTypeList();
         }
         
         reader.consume(TokenType.LBRACE, "Expected '{' before class body");
@@ -668,9 +776,12 @@ public class StatementParser {
         
         reader.consume(TokenType.RBRACE, "Expected '}' after class body");
         
+        boolean isSealed = (modifiers & Modifier.SEALED) != 0;
+        boolean isNonSealed = (modifiers & Modifier.NON_SEALED) != 0;
+        
         return new ClassDeclaration(token, name, modifiers, annotations, typeParameters,
                                    superClass, interfaces, fields, methods, constructors,
-                                   initializers, nestedTypes);
+                                   initializers, nestedTypes, isSealed, isNonSealed, permittedSubtypes);
     }
     
     private ASTNode parseClassMember(String className) {
@@ -691,8 +802,10 @@ public class StatementParser {
         memberModifiers |= modifierAndAnnotationParser.parseModifiers();
         
         if (reader.check(TokenType.CLASS) || reader.check(TokenType.INTERFACE) || 
-            reader.check(TokenType.ENUM) || reader.check(TokenType.AT)) {
-            return parseTypeDeclaration();
+            reader.check(TokenType.ENUM) || reader.check(TokenType.AT) ||
+            reader.check(TokenType.SEALED) || reader.check(TokenType.NON_SEALED) ||
+            reader.check(TokenType.RECORD)) {
+            return parseTypeDeclarationWithModifiers(annotations, memberModifiers);
         }
         
         if (reader.checkIdentifier() && reader.checkNext(TokenType.LPAREN)) {
@@ -825,6 +938,13 @@ public class StatementParser {
             extendsInterfaces = typeParser.parseTypeList();
         }
         
+        boolean isSealed = (modifiers & Modifier.SEALED) != 0;
+        boolean isNonSealed = (modifiers & Modifier.NON_SEALED) != 0;
+        List<Type> permittedSubtypes = new ArrayList<>();
+        if (isSealed && reader.match(TokenType.PERMITS)) {
+            permittedSubtypes = typeParser.parseTypeList();
+        }
+        
         reader.consume(TokenType.LBRACE, "Expected '{' before interface body");
         
         List<MethodDeclaration> methods = new ArrayList<>();
@@ -845,7 +965,8 @@ public class StatementParser {
         reader.consume(TokenType.RBRACE, "Expected '}' after interface body");
         
         return new InterfaceDeclaration(token, name, modifiers, annotations, typeParameters,
-                                       extendsInterfaces, methods, constants, nestedTypes);
+                                       extendsInterfaces, methods, constants, nestedTypes,
+                                       isSealed, isNonSealed, permittedSubtypes);
     }
     
     private ASTNode parseInterfaceMember() {
@@ -853,8 +974,10 @@ public class StatementParser {
         int modifiers = modifierAndAnnotationParser.parseModifiers();
         
         if (reader.check(TokenType.CLASS) || reader.check(TokenType.INTERFACE) || 
-            reader.check(TokenType.ENUM) || reader.check(TokenType.AT)) {
-            return parseTypeDeclaration();
+            reader.check(TokenType.ENUM) || reader.check(TokenType.AT) ||
+            reader.check(TokenType.SEALED) || reader.check(TokenType.NON_SEALED) ||
+            reader.check(TokenType.RECORD)) {
+            return parseTypeDeclarationWithModifiers(annotations, modifiers);
         }
         
         List<TypeParameter> typeParameters = new ArrayList<>();
@@ -1011,5 +1134,78 @@ public class StatementParser {
         reader.consume(TokenType.SEMICOLON, "Expected ';' after annotation element");
         
         return new AnnotationDeclaration.AnnotationElement(reader.previous(), name, type, defaultValue);
+    }
+    
+    private RecordDeclaration parseRecordDeclaration(List<Annotation> annotations, int modifiers) {
+        Token token = reader.previous();
+        String name = reader.consume(TokenType.IDENTIFIER, "Expected record name").getLexeme();
+        
+        List<TypeParameter> typeParameters = new ArrayList<>();
+        if (reader.match(TokenType.LT)) {
+            typeParameters = typeParser.parseTypeParameters();
+        }
+        
+        reader.consume(TokenType.LPAREN, "Expected '(' after record name");
+        List<RecordDeclaration.RecordComponent> components = new ArrayList<>();
+        
+        if (!reader.check(TokenType.RPAREN)) {
+            do {
+                components.add(parseRecordComponent());
+            } while (reader.match(TokenType.COMMA));
+        }
+        
+        reader.consume(TokenType.RPAREN, "Expected ')' after record components");
+        
+        List<Type> implementsInterfaces = new ArrayList<>();
+        if (reader.match(TokenType.IMPLEMENTS)) {
+            implementsInterfaces = typeParser.parseTypeList();
+        }
+        
+        reader.consume(TokenType.LBRACE, "Expected '{' before record body");
+        
+        List<MethodDeclaration> methods = new ArrayList<>();
+        List<FieldDeclaration> staticFields = new ArrayList<>();
+        List<TypeDeclaration> nestedTypes = new ArrayList<>();
+        
+        while (!reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
+            List<Annotation> memberAnnotations = modifierAndAnnotationParser.parseAnnotations();
+            int memberModifiers = modifierAndAnnotationParser.parseModifiers();
+            
+            if ((memberModifiers & Modifier.STATIC) == 0) {
+                throw new Parser.ParseError(reader.peek(), "Record members must be static");
+            }
+            
+            if (reader.check(TokenType.CLASS) || reader.check(TokenType.INTERFACE) || 
+                reader.check(TokenType.ENUM) || reader.check(TokenType.RECORD) || reader.check(TokenType.AT)) {
+                nestedTypes.add(parseTypeDeclaration());
+            } else {
+                List<TypeParameter> memberTypeParams = new ArrayList<>();
+                if (reader.match(TokenType.LT)) {
+                    memberTypeParams = typeParser.parseTypeParameters();
+                }
+                
+                Type type = typeParser.parseType();
+                String memberName = reader.consume(TokenType.IDENTIFIER, "Expected member name").getLexeme();
+                
+                if (reader.match(TokenType.LPAREN)) {
+                    methods.add(parseMethodDeclaration(type, memberName, memberModifiers, memberAnnotations, memberTypeParams));
+                } else {
+                    staticFields.add(parseFieldDeclaration(type, memberName, memberModifiers, memberAnnotations));
+                }
+            }
+        }
+        
+        reader.consume(TokenType.RBRACE, "Expected '}' after record body");
+        
+        return new RecordDeclaration(token, name, modifiers, annotations, typeParameters,
+                                    components, implementsInterfaces, methods,
+                                    staticFields, nestedTypes);
+    }
+    
+    private RecordDeclaration.RecordComponent parseRecordComponent() {
+        List<Annotation> componentAnnotations = modifierAndAnnotationParser.parseAnnotations();
+        Type type = typeParser.parseType();
+        String name = reader.consume(TokenType.IDENTIFIER, "Expected component name").getLexeme();
+        return new RecordDeclaration.RecordComponent(componentAnnotations, type, name, new ArrayList<>());
     }
 }

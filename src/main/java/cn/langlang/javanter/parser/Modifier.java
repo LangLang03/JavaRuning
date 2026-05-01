@@ -17,6 +17,9 @@ public class Modifier {
     public static final int SYNTHETIC = 1 << 13;
     public static final int BRIDGE = 1 << 14;
     public static final int ENUM = 1 << 15;
+    public static final int SEALED = 1 << 16;
+    public static final int NON_SEALED = 1 << 17;
+    public static final int RECORD = 1 << 18;
     
     public static String toString(int modifiers) {
         StringBuilder sb = new StringBuilder();
@@ -34,6 +37,8 @@ public class Modifier {
         if ((modifiers & DEFAULT) != 0) sb.append("default ");
         if ((modifiers & INTERFACE) != 0) sb.append("interface ");
         if ((modifiers & ENUM) != 0) sb.append("enum ");
+        if ((modifiers & SEALED) != 0) sb.append("sealed ");
+        if ((modifiers & NON_SEALED) != 0) sb.append("non-sealed ");
         return sb.toString().trim();
     }
 }

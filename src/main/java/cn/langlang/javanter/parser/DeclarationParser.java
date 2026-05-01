@@ -35,18 +35,24 @@ public class DeclarationParser {
         List<Annotation> annotations = modifierAndAnnotationParser.parseAnnotations();
         int modifiers = modifierAndAnnotationParser.parseModifiers();
         
+        return parseTypeDeclarationWithModifiers(annotations, modifiers);
+    }
+    
+    public TypeDeclaration parseTypeDeclarationWithModifiers(List<Annotation> annotations, int modifiers) {
         if (reader.match(TokenType.CLASS)) {
             return parseClassDeclaration(annotations, modifiers);
         } else if (reader.match(TokenType.INTERFACE)) {
             return parseInterfaceDeclaration(annotations, modifiers);
         } else if (reader.match(TokenType.ENUM)) {
             return parseEnumDeclaration(annotations, modifiers);
+        } else if (reader.match(TokenType.RECORD)) {
+            return parseRecordDeclaration(annotations, modifiers);
         } else if (reader.match(TokenType.AT)) {
             reader.consume(TokenType.INTERFACE, "Expected 'interface' after '@'");
             return parseAnnotationDeclaration(annotations, modifiers);
         }
         
-        throw new Parser.ParseError(reader.peek(), "Expected class, interface, enum, or annotation declaration");
+        throw new Parser.ParseError(reader.peek(), "Expected class, interface, enum, record, or annotation declaration");
     }
     
     public ClassDeclaration parseClassDeclaration(List<Annotation> annotations, int modifiers) {
@@ -66,6 +72,13 @@ public class DeclarationParser {
         List<Type> interfaces = new ArrayList<>();
         if (reader.match(TokenType.IMPLEMENTS)) {
             interfaces = typeParser.parseTypeList();
+        }
+        
+        boolean isSealed = (modifiers & Modifier.SEALED) != 0;
+        boolean isNonSealed = (modifiers & Modifier.NON_SEALED) != 0;
+        List<Type> permittedSubtypes = new ArrayList<>();
+        if (isSealed && reader.match(TokenType.PERMITS)) {
+            permittedSubtypes = typeParser.parseTypeList();
         }
         
         reader.consume(TokenType.LBRACE, "Expected '{' before class body");
@@ -95,7 +108,7 @@ public class DeclarationParser {
         
         return new ClassDeclaration(token, name, modifiers, annotations, typeParameters,
                                    superClass, interfaces, fields, methods, constructors,
-                                   initializers, nestedTypes);
+                                   initializers, nestedTypes, isSealed, isNonSealed, permittedSubtypes);
     }
     
     public ASTNode parseClassMember(String className) {
@@ -116,8 +129,10 @@ public class DeclarationParser {
         modifiers |= modifierAndAnnotationParser.parseModifiers();
         
         if (reader.check(TokenType.CLASS) || reader.check(TokenType.INTERFACE) || 
-            reader.check(TokenType.ENUM) || reader.check(TokenType.AT)) {
-            return parseTypeDeclaration();
+            reader.check(TokenType.ENUM) || reader.check(TokenType.AT) ||
+            reader.check(TokenType.SEALED) || reader.check(TokenType.NON_SEALED) ||
+            reader.check(TokenType.RECORD)) {
+            return parseTypeDeclarationWithModifiers(annotations, modifiers);
         }
         
         if (reader.checkIdentifier() && reader.checkNext(TokenType.LPAREN)) {
@@ -147,6 +162,10 @@ public class DeclarationParser {
     
     public FieldDeclaration parseFieldDeclaration(Type type, String name, 
                                                    int modifiers, List<Annotation> annotations) {
+        if (type.getName().equals("var")) {
+            throw new Parser.ParseError(type.getToken(), "'var' is not allowed in field declarations");
+        }
+        
         Token token = reader.previous();
         Expression initializer = null;
         
@@ -229,6 +248,9 @@ public class DeclarationParser {
         int modifiers = modifierAndAnnotationParser.parseModifiers();
         
         Type type = typeParser.parseType();
+        if (type.getName().equals("var")) {
+            throw new Parser.ParseError(type.getToken(), "'var' is not allowed in parameter types");
+        }
         boolean isVarArgs = reader.match(TokenType.ELLIPSIS);
         
         String name = reader.consume(TokenType.IDENTIFIER, "Expected parameter name").getLexeme();
@@ -248,6 +270,13 @@ public class DeclarationParser {
         List<Type> extendsInterfaces = new ArrayList<>();
         if (reader.match(TokenType.EXTENDS)) {
             extendsInterfaces = typeParser.parseTypeList();
+        }
+        
+        boolean isSealed = (modifiers & Modifier.SEALED) != 0;
+        boolean isNonSealed = (modifiers & Modifier.NON_SEALED) != 0;
+        List<Type> permittedSubtypes = new ArrayList<>();
+        if (isSealed && reader.match(TokenType.PERMITS)) {
+            permittedSubtypes = typeParser.parseTypeList();
         }
         
         reader.consume(TokenType.LBRACE, "Expected '{' before interface body");
@@ -270,7 +299,8 @@ public class DeclarationParser {
         reader.consume(TokenType.RBRACE, "Expected '}' after interface body");
         
         return new InterfaceDeclaration(token, name, modifiers, annotations, typeParameters,
-                                       extendsInterfaces, methods, constants, nestedTypes);
+                                       extendsInterfaces, methods, constants, nestedTypes,
+                                       isSealed, isNonSealed, permittedSubtypes);
     }
     
     public ASTNode parseInterfaceMember() {
@@ -436,6 +466,91 @@ public class DeclarationParser {
         reader.consume(TokenType.SEMICOLON, "Expected ';' after annotation element");
         
         return new AnnotationDeclaration.AnnotationElement(reader.previous(), name, type, defaultValue);
+    }
+    
+    public RecordDeclaration parseRecordDeclaration(List<Annotation> annotations, int modifiers) {
+        Token token = reader.previous();
+        String name = reader.consume(TokenType.IDENTIFIER, "Expected record name").getLexeme();
+        
+        List<TypeParameter> typeParameters = new ArrayList<>();
+        if (reader.match(TokenType.LT)) {
+            typeParameters = typeParser.parseTypeParameters();
+        }
+        
+        reader.consume(TokenType.LPAREN, "Expected '(' after record name");
+        List<RecordDeclaration.RecordComponent> components = new ArrayList<>();
+        
+        if (!reader.check(TokenType.RPAREN)) {
+            do {
+                components.add(parseRecordComponent());
+            } while (reader.match(TokenType.COMMA));
+        }
+        
+        reader.consume(TokenType.RPAREN, "Expected ')' after record components");
+        
+        List<Type> implementsInterfaces = new ArrayList<>();
+        if (reader.match(TokenType.IMPLEMENTS)) {
+            implementsInterfaces = typeParser.parseTypeList();
+        }
+        
+        reader.consume(TokenType.LBRACE, "Expected '{' before record body");
+        
+        List<MethodDeclaration> methods = new ArrayList<>();
+        List<FieldDeclaration> staticFields = new ArrayList<>();
+        List<TypeDeclaration> nestedTypes = new ArrayList<>();
+        
+        while (!reader.check(TokenType.RBRACE) && !reader.check(TokenType.EOF)) {
+            ASTNode member = parseRecordMember();
+            if (member instanceof MethodDeclaration) {
+                methods.add((MethodDeclaration) member);
+            } else if (member instanceof FieldDeclaration) {
+                staticFields.add((FieldDeclaration) member);
+            } else if (member instanceof TypeDeclaration) {
+                nestedTypes.add((TypeDeclaration) member);
+            }
+        }
+        
+        reader.consume(TokenType.RBRACE, "Expected '}' after record body");
+        
+        return new RecordDeclaration(token, name, modifiers, annotations, typeParameters,
+                                    components, implementsInterfaces, methods,
+                                    staticFields, nestedTypes);
+    }
+    
+    private RecordDeclaration.RecordComponent parseRecordComponent() {
+        List<Annotation> annotations = modifierAndAnnotationParser.parseAnnotations();
+        Type type = typeParser.parseType();
+        List<Annotation> componentAnnotations = modifierAndAnnotationParser.parseAnnotations();
+        String name = reader.consume(TokenType.IDENTIFIER, "Expected component name").getLexeme();
+        return new RecordDeclaration.RecordComponent(annotations, type, name, componentAnnotations);
+    }
+    
+    private ASTNode parseRecordMember() {
+        List<Annotation> annotations = modifierAndAnnotationParser.parseAnnotations();
+        int modifiers = modifierAndAnnotationParser.parseModifiers();
+        
+        if ((modifiers & Modifier.STATIC) == 0) {
+            throw new Parser.ParseError(reader.peek(), "Record members must be static");
+        }
+        
+        if (reader.check(TokenType.CLASS) || reader.check(TokenType.INTERFACE) || 
+            reader.check(TokenType.ENUM) || reader.check(TokenType.RECORD) || reader.check(TokenType.AT)) {
+            return parseTypeDeclaration();
+        }
+        
+        List<TypeParameter> typeParameters = new ArrayList<>();
+        if (reader.match(TokenType.LT)) {
+            typeParameters = typeParser.parseTypeParameters();
+        }
+        
+        Type type = typeParser.parseType();
+        String name = reader.consume(TokenType.IDENTIFIER, "Expected member name").getLexeme();
+        
+        if (reader.match(TokenType.LPAREN)) {
+            return parseMethodDeclaration(type, name, modifiers, annotations, typeParameters);
+        }
+        
+        return parseFieldDeclaration(type, name, modifiers, annotations);
     }
     
     private boolean checkIdentifier() {

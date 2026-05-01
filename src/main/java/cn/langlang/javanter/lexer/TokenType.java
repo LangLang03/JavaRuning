@@ -125,10 +125,17 @@ public enum TokenType {
     
     TRUE,
     FALSE,
-    NULL;
+    NULL,
+    
+    VAR,
+    RECORD,
+    SEALED,
+    PERMITS,
+    YIELD,
+    NON_SEALED;
     
     public boolean isKeyword() {
-        return ordinal() >= ABSTRACT.ordinal() && ordinal() <= WHILE.ordinal();
+        return ordinal() >= ABSTRACT.ordinal() && ordinal() <= YIELD.ordinal();
     }
     
     public boolean isLiteral() {

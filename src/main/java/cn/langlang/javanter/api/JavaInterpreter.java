@@ -329,6 +329,37 @@ public class JavaInterpreter {
         return scriptClass;
     }
     
+    public ScriptClass registerRecord(String name) {
+        return registerRecord(name, Modifier.PUBLIC | Modifier.FINAL);
+    }
+    
+    public ScriptClass registerRecord(String name, int modifiers) {
+        int recordModifiers = modifiers | Modifier.FINAL;
+        ScriptClass recordClass = new ScriptClass(name, name, recordModifiers, null, new ArrayList<>(), null);
+        globalEnv.defineClass(name, recordClass);
+        return recordClass;
+    }
+    
+    public ScriptClass registerSealedClass(String name, String... permittedSubtypes) {
+        return registerSealedClass(name, Modifiers.PUBLIC | Modifiers.SEALED, permittedSubtypes);
+    }
+    
+    public ScriptClass registerSealedClass(String name, int modifiers, String... permittedSubtypes) {
+        int sealedModifiers = modifiers | Modifier.SEALED;
+        ScriptClass sealedClass = new ScriptClass(name, name, sealedModifiers, null, new ArrayList<>(), null);
+        
+        if (permittedSubtypes != null && permittedSubtypes.length > 0) {
+            List<Type> permits = new java.util.ArrayList<>();
+            for (String subtype : permittedSubtypes) {
+                permits.add(new Type(null, subtype, null, 0, null));
+            }
+            sealedClass.setPermittedSubtypes(permits);
+        }
+        
+        globalEnv.defineClass(name, sealedClass);
+        return sealedClass;
+    }
+    
     public ScriptClass getClass(String name) {
         return globalEnv.getClass(name);
     }
@@ -409,6 +440,66 @@ public class JavaInterpreter {
     
     public void registerStaticField(String className, String fieldName, int modifiers, Object value) {
         registerField(className, fieldName, modifiers | Modifier.STATIC, value);
+    }
+    
+    public ScriptField getField(String className, String fieldName) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return null;
+        return scriptClass.getField(fieldName);
+    }
+    
+    public Collection<ScriptField> getFields(String className) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return java.util.Collections.emptyList();
+        return scriptClass.getAllFields();
+    }
+    
+    public List<ScriptMethod> getMethods(String className, String methodName) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return new ArrayList<>();
+        return scriptClass.getMethods(methodName);
+    }
+    
+    public Map<String, List<ScriptMethod>> getAllMethods(String className) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return new LinkedHashMap<>();
+        return scriptClass.getMethods();
+    }
+    
+    public List<ScriptMethod> getConstructors(String className) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return new ArrayList<>();
+        return scriptClass.getConstructors();
+    }
+    
+    public List<ScriptClass> getNestedTypes(String className) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return new ArrayList<>();
+        return new ArrayList<>(scriptClass.getNestedTypes());
+    }
+    
+    public List<Type> getPermittedSubtypes(String className) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return new ArrayList<>();
+        return scriptClass.getPermittedSubtypes();
+    }
+    
+    public int getModifiers(String className) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return 0;
+        return scriptClass.getModifiers();
+    }
+    
+    public boolean isSealed(String className) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return false;
+        return scriptClass.isSealed();
+    }
+    
+    public boolean isRecord(String className) {
+        ScriptClass scriptClass = globalEnv.getClass(className);
+        if (scriptClass == null) return false;
+        return scriptClass.isRecord();
     }
     
     public Object newInstance(String className, Object... args) {
@@ -494,6 +585,9 @@ public class JavaInterpreter {
         public static final int ABSTRACT = Modifier.ABSTRACT;
         public static final int STRICTFP = Modifier.STRICTFP;
         public static final int DEFAULT = Modifier.DEFAULT;
+        public static final int ENUM = Modifier.ENUM;
+        public static final int SEALED = Modifier.SEALED;
+        public static final int NON_SEALED = Modifier.NON_SEALED;
         
         public static String toString(int modifiers) {
             return Modifier.toString(modifiers);

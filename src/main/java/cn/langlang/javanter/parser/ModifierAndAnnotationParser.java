@@ -40,6 +40,8 @@ public class ModifierAndAnnotationParser {
             else if (reader.match(TokenType.ABSTRACT)) modifiers |= Modifier.ABSTRACT;
             else if (reader.match(TokenType.STRICTFP)) modifiers |= Modifier.STRICTFP;
             else if (reader.match(TokenType.DEFAULT)) modifiers |= Modifier.DEFAULT;
+            else if (reader.match(TokenType.SEALED)) modifiers |= Modifier.SEALED;
+            else if (reader.match(TokenType.NON_SEALED)) modifiers |= Modifier.NON_SEALED;
             else break;
         }
         

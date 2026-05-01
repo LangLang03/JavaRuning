@@ -64,4 +64,7 @@ public interface ASTVisitor<R> {
     R visitTypeArgument(TypeArgument node);
     R visitAnnotation(Annotation node);
     R visitEnumConstant(EnumConstant node);
+    R visitSwitchExpression(SwitchExpression node);
+    R visitRecordDeclaration(RecordDeclaration node);
+    R visitYieldStatement(YieldStatement node);
 }

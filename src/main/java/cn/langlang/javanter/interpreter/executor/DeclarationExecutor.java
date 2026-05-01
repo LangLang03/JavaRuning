@@ -33,11 +33,18 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
             if (superClass != null && (superClass.getModifiers() & Modifier.FINAL) != 0) {
                 throw new RuntimeException("Cannot inherit from final class '" + superClass.getName() + "'");
             }
+            if (superClass != null && (superClass.getModifiers() & Modifier.SEALED) != 0) {
+                validateSealedSubclass(name, node.getModifiers(), superClass);
+            }
         }
         
         List<ScriptClass> interfaces = new ArrayList<>();
         for (Type iface : node.getInterfaces()) {
-            interfaces.add(interpreter.resolveClass(iface));
+            ScriptClass ifaceClass = interpreter.resolveClass(iface);
+            if (ifaceClass != null && (ifaceClass.getModifiers() & Modifier.SEALED) != 0) {
+                validateSealedSubclass(name, node.getModifiers(), ifaceClass);
+            }
+            interfaces.add(ifaceClass);
         }
         
         ScriptClass scriptClass = new ScriptClass(name, name, node.getModifiers(),
@@ -51,6 +58,10 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
         
         interpreter.getGlobalEnv().defineClass(name, scriptClass);
         interpreter.getLoadedClasses().put(name, scriptClass);
+        
+        if (node.getPermittedSubtypes() != null && !node.getPermittedSubtypes().isEmpty()) {
+            scriptClass.setPermittedSubtypes(node.getPermittedSubtypes());
+        }
         
         for (FieldDeclaration field : node.getFields()) {
             ScriptField scriptField = new ScriptField(
@@ -435,6 +446,32 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
         env.invokeProcessorsForClass(classDecl, scriptClass);
     }
     
+    private void validateSealedSubclass(String subclassName, int subclassModifiers, ScriptClass sealedParent) {
+        boolean isFinal = (subclassModifiers & Modifier.FINAL) != 0;
+        boolean isSealed = (subclassModifiers & Modifier.SEALED) != 0;
+        boolean isNonSealed = (subclassModifiers & Modifier.NON_SEALED) != 0;
+        
+        if (!isFinal && !isSealed && !isNonSealed) {
+            throw new RuntimeException("Class '" + subclassName + "' must be declared final, sealed, or non-sealed " +
+                "because it extends/implements sealed class/interface '" + sealedParent.getName() + "'");
+        }
+        
+        List<Type> permittedTypes = sealedParent.getPermittedSubtypes();
+        if (permittedTypes != null && !permittedTypes.isEmpty()) {
+            boolean isPermitted = false;
+            for (Type permitted : permittedTypes) {
+                if (permitted.getName().equals(subclassName)) {
+                    isPermitted = true;
+                    break;
+                }
+            }
+            if (!isPermitted) {
+                throw new RuntimeException("Class '" + subclassName + "' is not in the permits list of sealed class/interface '" +
+                    sealedParent.getName() + "'");
+            }
+        }
+    }
+    
     private void registerNestedType(TypeDeclaration nested, String fullName) {
         if (nested instanceof ClassDeclaration) {
             ClassDeclaration classDecl = (ClassDeclaration) nested;
@@ -497,6 +534,10 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
         
         interpreter.getGlobalEnv().defineClass(name, scriptClass);
         interpreter.getLoadedClasses().put(name, scriptClass);
+        
+        if (node.getPermittedSubtypes() != null && !node.getPermittedSubtypes().isEmpty()) {
+            scriptClass.setPermittedSubtypes(node.getPermittedSubtypes());
+        }
         
         for (MethodDeclaration method : node.getMethods()) {
             ScriptMethod scriptMethod = new ScriptMethod(
@@ -685,6 +726,143 @@ public class DeclarationExecutor extends AbstractASTVisitor<Object> {
     @Override
     public Object visitAnnotationDeclaration(AnnotationDeclaration node) {
         return null;
+    }
+    
+    @Override
+    public Object visitRecordDeclaration(RecordDeclaration node) {
+        String name = node.getName();
+        
+        List<ScriptClass> interfaces = new ArrayList<>();
+        for (Type iface : node.getImplementsInterfaces()) {
+            interfaces.add(interpreter.resolveClass(iface));
+        }
+        
+        ScriptClass recordClass = new ScriptClass(name, name, Modifier.FINAL | node.getModifiers(),
+                                                  null, interfaces, null);
+        
+        interpreter.getGlobalEnv().defineClass(name, recordClass);
+        interpreter.getLoadedClasses().put(name, recordClass);
+        
+        for (RecordDeclaration.RecordComponent component : node.getComponents()) {
+            ScriptField scriptField = new ScriptField(
+                component.getName(), Modifier.PRIVATE | Modifier.FINAL, component.getType(),
+                null, recordClass, component.getAnnotations());
+            recordClass.addField(scriptField);
+            
+            Type returnType = component.getType();
+            List<ParameterDeclaration> accessorParams = new ArrayList<>();
+            ScriptMethod accessor = new ScriptMethod(
+                component.getName(), Modifier.PUBLIC, returnType,
+                accessorParams, false, null, recordClass, false, false,
+                component.getAnnotations()
+            );
+            final String fieldName = component.getName();
+            accessor.setNativeImplementation(args -> {
+                if (args[0] instanceof RuntimeObject) {
+                    RuntimeObject robj = (RuntimeObject) args[0];
+                    return robj.getField(fieldName);
+                }
+                return null;
+            });
+            recordClass.addMethod(accessor);
+        }
+        
+        for (MethodDeclaration method : node.getMethods()) {
+            if ((method.getModifiers() & Modifier.STATIC) == 0) {
+                throw new RuntimeException("Record methods must be static: " + method.getName());
+            }
+            ScriptMethod scriptMethod = new ScriptMethod(
+                method.getName(), method.getModifiers(), method.getReturnType(),
+                method.getParameters(), method.isVarArgs(), method.getBody(),
+                recordClass, false, method.isDefault(), method.getAnnotations());
+            recordClass.addMethod(scriptMethod);
+        }
+        
+        for (FieldDeclaration field : node.getStaticFields()) {
+            ScriptField scriptField = new ScriptField(
+                field.getName(), field.getModifiers(), field.getType(),
+                field.getInitializer(), recordClass, field.getAnnotations());
+            recordClass.addField(scriptField);
+        }
+        
+        generateRecordMethods(recordClass, node);
+        
+        return null;
+    }
+    
+    private void generateRecordMethods(ScriptClass recordClass, RecordDeclaration node) {
+        Type stringType = new Type(null, "String", null, 0, null);
+        List<ParameterDeclaration> toStringParams = new ArrayList<>();
+        ScriptMethod toStringMethod = new ScriptMethod(
+            "toString", Modifier.PUBLIC, stringType,
+            toStringParams, false, null, recordClass, false, false, new ArrayList<>()
+        );
+        toStringMethod.setNativeImplementation(args -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append(recordClass.getName()).append("[");
+            boolean first = true;
+            for (RecordDeclaration.RecordComponent comp : node.getComponents()) {
+                if (!first) sb.append(", ");
+                sb.append(comp.getName()).append("=");
+                first = false;
+            }
+            sb.append("]");
+            return sb.toString();
+        });
+        recordClass.addMethod(toStringMethod);
+        
+        Type intType = new Type(null, "int", null, 0, null);
+        List<ParameterDeclaration> hashCodeParams = new ArrayList<>();
+        ScriptMethod hashCodeMethod = new ScriptMethod(
+            "hashCode", Modifier.PUBLIC, intType,
+            hashCodeParams, false, null, recordClass, false, false, new ArrayList<>()
+        );
+        hashCodeMethod.setNativeImplementation(args -> {
+            int result = 1;
+            for (RecordDeclaration.RecordComponent comp : node.getComponents()) {
+                result = 31 * result + (comp.getName() != null ? comp.getName().hashCode() : 0);
+            }
+            return result;
+        });
+        recordClass.addMethod(hashCodeMethod);
+        
+        Type objectType = new Type(null, "Object", null, 0, null);
+        List<ParameterDeclaration> equalsParams = new ArrayList<>();
+        equalsParams.add(new ParameterDeclaration(null, 0, objectType, "obj", false, new ArrayList<>()));
+        ScriptMethod equalsMethod = new ScriptMethod(
+            "equals", Modifier.PUBLIC, new Type(null, "boolean", null, 0, null),
+            equalsParams, false, null, recordClass, false, false, new ArrayList<>()
+        );
+        equalsMethod.setNativeImplementation(args -> {
+            if (args[0] == recordClass) return true;
+            if (!(args[0] instanceof RuntimeObject)) return false;
+            RuntimeObject other = (RuntimeObject) args[0];
+            return other.getScriptClass() == recordClass;
+        });
+        recordClass.addMethod(equalsMethod);
+        
+        List<ParameterDeclaration> constructorParams = new ArrayList<>();
+        for (RecordDeclaration.RecordComponent comp : node.getComponents()) {
+            constructorParams.add(new ParameterDeclaration(null, 0, comp.getType(), comp.getName(), 
+                                                       false, comp.getAnnotations()));
+        }
+        ScriptMethod canonicalConstructor = new ScriptMethod(
+            node.getName(), Modifier.PUBLIC, null,
+            constructorParams, false, null, recordClass, true, false, new ArrayList<>()
+        );
+        final List<RecordDeclaration.RecordComponent> components = node.getComponents();
+        canonicalConstructor.setNativeImplementation(args -> {
+            if (args[0] instanceof RuntimeObject) {
+                RuntimeObject robj = (RuntimeObject) args[0];
+                for (int i = 0; i < components.size(); i++) {
+                    String fieldName = components.get(i).getName();
+                    Object value = args[i + 1];
+                    robj.setField(fieldName, value);
+                }
+            }
+            return args[0];
+        });
+        recordClass.addConstructor(canonicalConstructor);
     }
     
     @Override

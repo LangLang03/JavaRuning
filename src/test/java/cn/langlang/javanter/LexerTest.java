@@ -360,4 +360,18 @@ public class LexerTest {
         
         assertEquals(expectedClosing, actualClosing, "Six level nested generics should produce URSHIFT URSHIFT for >>>>>>>");
     }
+    
+    @Test
+    public void testSealedKeyword() {
+        String source = "sealed interface Shape permits Circle, Rectangle {}";
+        Lexer lexer = new Lexer(source);
+        List<Token> tokens = lexer.scanTokens();
+        
+        assertEquals(TokenType.SEALED, tokens.get(0).getType());
+        assertEquals("sealed", tokens.get(0).getLexeme());
+        assertEquals(TokenType.INTERFACE, tokens.get(1).getType());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(2).getType());
+        assertEquals("Shape", tokens.get(2).getLexeme());
+        assertEquals(TokenType.PERMITS, tokens.get(3).getType());
+    }
 }
