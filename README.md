@@ -56,11 +56,18 @@ Javanter
   ├── interpreter/     Core execution engine
   │     ├── evaluator/   Expression evaluation
   │     ├── executor/    Statement and declaration execution
-  │     └── exception/   Control flow exceptions
+  │     ├── exception/   Control flow exceptions
+  │     ├── AccessController.java  Access control checking
+  │     └── TypeConverter.java     Type conversion utilities
   ├── runtime/
   │     ├── model/       Runtime objects, ScriptClass, ScriptMethod
   │     ├── environment/  Scoped environment chain
-  │     └── nativesupport/ Standard library bridge
+  │     ├── nativesupport/ Standard library bridge
+  │     │     ├── MethodBuilder.java    Method registration builder
+  │     │     └── ReflectionInvoker.java Reflection invocation utilities
+  │     ├── TypeConstants.java    Type constant definitions
+  │     ├── ExceptionConstants.java Exception constant definitions
+  │     └── NumericUtils.java     Numeric operation utilities
   ├── analyzer/       Static code analysis
   └── annotation/     Annotation processing framework
 ```
@@ -203,13 +210,20 @@ src/main/java/cn/langlang/javainterpreter/
 │   └── type/              # Type nodes
 ├── interpreter/
 │   ├── Interpreter.java   # Core engine
+│   ├── AccessController.java  # Access control
+│   ├── TypeConverter.java     # Type conversion
 │   ├── evaluator/         # Expression evaluation
 │   ├── executor/          # Statement/declaration execution
 │   └── exception/         # Control flow exceptions
 ├── runtime/
 │   ├── environment/       # Scoped environments
 │   ├── model/             # Runtime objects
-│   └── nativesupport/     # Java stdlib bridge
+│   ├── nativesupport/     # Java stdlib bridge
+│   │   ├── MethodBuilder.java    # Method builder
+│   │   └── ReflectionInvoker.java # Reflection invocation
+│   ├── TypeConstants.java    # Type constants
+│   ├── ExceptionConstants.java # Exception constants
+│   └── NumericUtils.java     # Numeric operations
 ├── analyzer/
 │   └── StaticAnalyzer.java
 └── annotation/

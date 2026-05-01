@@ -56,11 +56,18 @@ Javanter
   ├── interpreter/     核心执行引擎
   │     ├── evaluator/   表达式求值
   │     ├── executor/    语句和声明执行
-  │     └── exception/   控制流异常
+  │     ├── exception/   控制流异常
+  │     ├── AccessController.java  访问控制检查
+  │     └── TypeConverter.java     类型转换工具
   ├── runtime/
   │     ├── model/       运行时对象、ScriptClass、ScriptMethod
   │     ├── environment/  作用域链环境
-  │     └── nativesupport/ Java 标准库桥接
+  │     ├── nativesupport/ Java 标准库桥接
+  │     │     ├── MethodBuilder.java    方法注册构建器
+  │     │     └── ReflectionInvoker.java 反射调用工具
+  │     ├── TypeConstants.java    类型常量定义
+  │     ├── ExceptionConstants.java 异常常量定义
+  │     └── NumericUtils.java     数值运算工具
   ├── analyzer/       静态代码分析
   └── annotation/     注解处理框架
 ```
@@ -203,13 +210,20 @@ src/main/java/cn/langlang/javainterpreter/
 │   └── type/             # 类型节点
 ├── interpreter/
 │   ├── Interpreter.java   # 核心引擎
+│   ├── AccessController.java  # 访问控制
+│   ├── TypeConverter.java     # 类型转换
 │   ├── evaluator/         # 表达式求值
 │   ├── executor/          # 语句/声明执行
 │   └── exception/         # 控制流异常
 ├── runtime/
 │   ├── environment/       # 作用域环境
 │   ├── model/            # 运行时对象
-│   └── nativesupport/     # Java 标准库桥接
+│   ├── nativesupport/     # Java 标准库桥接
+│   │   ├── MethodBuilder.java    # 方法构建器
+│   │   └── ReflectionInvoker.java # 反射调用
+│   ├── TypeConstants.java    # 类型常量
+│   ├── ExceptionConstants.java # 异常常量
+│   └── NumericUtils.java     # 数值运算
 ├── analyzer/
 │   └── StaticAnalyzer.java
 └── annotation/
