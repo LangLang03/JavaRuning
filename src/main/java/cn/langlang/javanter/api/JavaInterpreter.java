@@ -148,14 +148,14 @@ public class JavaInterpreter {
     public void load(String source, String fileName) {
         String trimmedSource = source.trim();
 
+        String processedSource = preprocessSource(source);
+        
         java.util.regex.Pattern classPattern = java.util.regex.Pattern.compile(
             "(?:^|\\s)(?:public\\s+)?(?:abstract\\s+)?(?:final\\s+)?class\\s+(\\w+)");
-        java.util.regex.Matcher classMatcher = classPattern.matcher(trimmedSource);
+        java.util.regex.Matcher classMatcher = classPattern.matcher(processedSource);
         if (classMatcher.find()) {
             mainClassName = classMatcher.group(1);
         }
-
-        String processedSource = preprocessSource(source);
         
         if (fileName != null) {
             interpreter.setCurrentFileName(fileName);
@@ -563,6 +563,85 @@ public class JavaInterpreter {
 
     public void enableLombokStyleAnnotations() {
         interpreter.addAnnotationProcessor(new cn.langlang.javanter.annotation.DataAnnotationProcessor());
+    }
+
+    public ScriptResult executeScript(String code) {
+        return executeScript(code, Collections.emptyMap());
+    }
+
+    public ScriptResult executeScript(String code, Map<String, Object> context) {
+        for (Map.Entry<String, Object> entry : context.entrySet()) {
+            globalEnv.defineVariable(entry.getKey(), entry.getValue());
+        }
+        
+        try {
+            Object result = execute(code);
+            
+            Map<String, Object> modifiedVars = new HashMap<>();
+            for (String name : context.keySet()) {
+                modifiedVars.put(name, globalEnv.getVariable(name));
+            }
+            
+            return new ScriptResult(result, modifiedVars, true, null);
+        } catch (Exception e) {
+            return new ScriptResult(null, context, false, e);
+        }
+    }
+
+    public ScriptResult executeScript(String code, List<ScriptField> fields, Map<String, Object> values) {
+        for (ScriptField field : fields) {
+            String name = field.getName();
+            Object value = values.get(name);
+            globalEnv.defineVariable(name, value);
+        }
+        
+        try {
+            Object result = execute(code);
+            
+            Map<String, Object> modifiedVars = new HashMap<>();
+            for (ScriptField field : fields) {
+                String name = field.getName();
+                if (!field.isFinal()) {
+                    modifiedVars.put(name, globalEnv.getVariable(name));
+                } else {
+                    modifiedVars.put(name, values.get(name));
+                }
+            }
+            
+            return new ScriptResult(result, modifiedVars, true, null);
+        } catch (Exception e) {
+            return new ScriptResult(null, values, false, e);
+        }
+    }
+
+    public Object executeBlock(String code) {
+        return execute(code);
+    }
+
+    public Object executeBlock(String code, Map<String, Object> variables) {
+        for (Map.Entry<String, Object> entry : variables.entrySet()) {
+            registerVariable(entry.getKey(), entry.getValue());
+        }
+        return execute(code);
+    }
+
+    public Object executeBlock(String code, List<ScriptField> fields, Map<String, Object> values) {
+        for (ScriptField field : fields) {
+            String name = field.getName();
+            Object value = values.get(name);
+            registerVariable(name, value);
+        }
+        return execute(code);
+    }
+
+    public static ScriptResult run(String code, Map<String, Object> context) {
+        JavaInterpreter interpreter = new JavaInterpreter();
+        return interpreter.executeScript(code, context);
+    }
+
+    public static Object eval(String code) {
+        JavaInterpreter interpreter = new JavaInterpreter();
+        return interpreter.execute(code);
     }
 
     /**

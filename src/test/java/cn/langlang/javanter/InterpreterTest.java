@@ -1,6 +1,7 @@
 package cn.langlang.javanter;
 
 import cn.langlang.javanter.api.*;
+import cn.langlang.javanter.runtime.model.ScriptField;
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 import java.io.*;
@@ -371,5 +372,72 @@ public class InterpreterTest {
         String output = getOutput();
         assertTrue(output.contains("child"));
         assertTrue(output.contains("Child[]"));
+    }
+    
+    @Test
+    public void testExecuteScriptWithVariables() {
+        JavaInterpreter interpreter = new JavaInterpreter();
+        
+        java.util.Map<String, Object> context = new java.util.HashMap<>();
+        context.put("name", "AAA");
+        context.put("count", 10);
+        
+        ScriptResult result = interpreter.executeScript(
+            "name = \"BBB\"; count = count + 1;",
+            context
+        );
+        
+        assertTrue(result.isSuccess());
+        assertEquals("BBB", result.get("name"));
+        assertEquals(11, result.get("count"));
+    }
+    
+    @Test
+    public void testExecuteScriptWithScriptFields() {
+        JavaInterpreter interpreter = new JavaInterpreter();
+        
+        java.util.List<ScriptField> fields = new java.util.ArrayList<>();
+        fields.add(new ScriptField("name", 0, 
+            new cn.langlang.javanter.ast.type.Type(null, "String", null, 0, null), null, null));
+        fields.add(new ScriptField("count", 0, 
+            new cn.langlang.javanter.ast.type.Type(null, "int", null, 0, null), null, null));
+        
+        java.util.Map<String, Object> values = new java.util.HashMap<>();
+        values.put("name", "AAA");
+        values.put("count", 10);
+        
+        ScriptResult result = interpreter.executeScript(
+            "name = \"BBB\"; count = count + 1;",
+            fields,
+            values
+        );
+        
+        assertTrue(result.isSuccess());
+        assertEquals("BBB", result.get("name"));
+        assertEquals(11, result.get("count"));
+    }
+    
+    @Test
+    public void testExecuteBlock() {
+        JavaInterpreter interpreter = new JavaInterpreter();
+        
+        interpreter.executeBlock("int a = 10; int b = 20; System.out.println(a + b);");
+    }
+    
+    @Test
+    public void testStaticRunMethod() {
+        java.util.Map<String, Object> context = new java.util.HashMap<>();
+        context.put("x", 10);
+        context.put("y", 20);
+        
+        ScriptResult result = JavaInterpreter.run("int sum = x + y; System.out.println(sum);", context);
+        
+        assertTrue(result.isSuccess());
+    }
+    
+    @Test
+    public void testStaticEvalMethod() {
+        JavaInterpreter interpreter = new JavaInterpreter();
+        interpreter.execute("System.out.println(10 + 20);");
     }
 }
