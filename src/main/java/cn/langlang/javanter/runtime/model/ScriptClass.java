@@ -5,9 +5,13 @@ import cn.langlang.javanter.ast.declaration.ParameterDeclaration;
 import cn.langlang.javanter.ast.declaration.TypeDeclaration;
 import cn.langlang.javanter.ast.type.Type;
 import cn.langlang.javanter.ast.type.TypeParameter;
+import cn.langlang.javanter.parser.Modifier;
 import cn.langlang.javanter.runtime.TypeConstants;
+import cn.langlang.javanter.runtime.environment.Environment;
 import cn.langlang.javanter.runtime.generics.*;
+import cn.langlang.javanter.runtime.nativesupport.NativeMethod;
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * Represents a class definition during interpretation.
@@ -65,6 +69,8 @@ public class ScriptClass {
     private Map<String, GenericType> typeBindings;
     private List<Type> permittedSubtypes;
     private List<ScriptClass> nestedTypes;
+    private Map<String, Object> staticFieldValues;
+    private Environment environment;
     
     public ScriptClass(String name, String qualifiedName, int modifiers, 
                       ScriptClass superClass, List<ScriptClass> interfaces,
@@ -85,6 +91,7 @@ public class ScriptClass {
         this.typeBindings = new LinkedHashMap<>();
         this.permittedSubtypes = new ArrayList<>();
         this.nestedTypes = new ArrayList<>();
+        this.staticFieldValues = new LinkedHashMap<>();
     }
     
     public String getName() { return name; }
@@ -107,6 +114,9 @@ public class ScriptClass {
     public List<Type> getPermittedSubtypes() { return permittedSubtypes; }
     public void setPermittedSubtypes(List<Type> permittedSubtypes) { this.permittedSubtypes = permittedSubtypes != null ? permittedSubtypes : new ArrayList<>(); }
     public List<ScriptClass> getNestedTypes() { return Collections.unmodifiableList(nestedTypes); }
+    public Map<String, Object> getStaticFieldValues() { return staticFieldValues; }
+    public Environment getEnvironment() { return environment; }
+    public void setEnvironment(Environment environment) { this.environment = environment; }
     
     public void setInitialized(boolean initialized) {
         this.initialized = initialized;
@@ -152,6 +162,8 @@ public class ScriptClass {
         copy.genericInfo = this.genericInfo;
         copy.typeBindings.putAll(this.typeBindings);
         copy.typeBindings.putAll(bindings);
+        copy.staticFieldValues.putAll(this.staticFieldValues);
+        copy.environment = this.environment;
         return copy;
     }
     
@@ -184,12 +196,51 @@ public class ScriptClass {
     }
     
     public ScriptClass createInnerClass(String name, int modifiers, ScriptClass superClass) {
-        ScriptClass innerClass = createInnerClass(name, modifiers);
+        String qualifiedName = this.qualifiedName + "$" + name;
+        ScriptClass innerClass = new ScriptClass(name, qualifiedName, modifiers, superClass, new ArrayList<>(), null);
+        innerClass.setEnclosingClass(this);
+        nestedTypes.add(innerClass);
         return innerClass;
     }
     
-    public ScriptClass createInnerClass(String name, int modifiers, List<ScriptClass> interfaces) {
-        ScriptClass innerClass = createInnerClass(name, modifiers);
+    public ScriptClass createInnerClass(String name, int modifiers, ScriptClass superClass, List<ScriptClass> interfaces) {
+        String qualifiedName = this.qualifiedName + "$" + name;
+        ScriptClass innerClass = new ScriptClass(name, qualifiedName, modifiers, superClass, interfaces, null);
+        innerClass.setEnclosingClass(this);
+        nestedTypes.add(innerClass);
+        return innerClass;
+    }
+    
+    public ScriptClass registerInnerClass(String name, int modifiers) {
+        if (environment == null) {
+            throw new IllegalStateException("Environment not set. Use registerClass() to create classes with environment.");
+        }
+        ScriptClass innerClass = this.createInnerClass(name, modifiers);
+        innerClass.setEnvironment(environment);
+        environment.defineClass(name, innerClass);
+        environment.defineClass(innerClass.getQualifiedName(), innerClass);
+        return innerClass;
+    }
+    
+    public ScriptClass registerInnerClass(String name, int modifiers, ScriptClass superClass) {
+        if (environment == null) {
+            throw new IllegalStateException("Environment not set. Use registerClass() to create classes with environment.");
+        }
+        ScriptClass innerClass = this.createInnerClass(name, modifiers, superClass);
+        innerClass.setEnvironment(environment);
+        environment.defineClass(name, innerClass);
+        environment.defineClass(innerClass.getQualifiedName(), innerClass);
+        return innerClass;
+    }
+    
+    public ScriptClass registerInnerClass(String name, int modifiers, ScriptClass superClass, List<ScriptClass> interfaces) {
+        if (environment == null) {
+            throw new IllegalStateException("Environment not set. Use registerClass() to create classes with environment.");
+        }
+        ScriptClass innerClass = this.createInnerClass(name, modifiers, superClass, interfaces);
+        innerClass.setEnvironment(environment);
+        environment.defineClass(name, innerClass);
+        environment.defineClass(innerClass.getQualifiedName(), innerClass);
         return innerClass;
     }
     
@@ -553,5 +604,125 @@ public class ScriptClass {
         }
         
         return false;
+    }
+    
+    public static ScriptClass registerClass(Environment env, String name) {
+        return registerClass(env, name, Modifier.PUBLIC);
+    }
+    
+    public static ScriptClass registerClass(Environment env, String name, int modifiers) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, null, new ArrayList<>(), null);
+        scriptClass.setEnvironment(env);
+        env.defineClass(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public static ScriptClass registerClass(Environment env, String name, int modifiers, ScriptClass superClass) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, superClass, new ArrayList<>(), null);
+        scriptClass.setEnvironment(env);
+        env.defineClass(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public static ScriptClass registerClass(Environment env, String name, int modifiers, ScriptClass superClass, List<ScriptClass> interfaces) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, superClass, interfaces, null);
+        scriptClass.setEnvironment(env);
+        env.defineClass(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public static ScriptClass registerRecord(Environment env, String name) {
+        return registerRecord(env, name, Modifier.PUBLIC | Modifier.FINAL);
+    }
+    
+    public static ScriptClass registerRecord(Environment env, String name, int modifiers) {
+        int recordModifiers = modifiers | Modifier.FINAL;
+        ScriptClass recordClass = new ScriptClass(name, name, recordModifiers, null, new ArrayList<>(), null);
+        recordClass.setEnvironment(env);
+        env.defineClass(name, recordClass);
+        return recordClass;
+    }
+    
+    public static ScriptClass registerSealedClass(Environment env, String name, String... permittedSubtypes) {
+        return registerSealedClass(env, name, Modifier.PUBLIC | Modifier.SEALED, permittedSubtypes);
+    }
+    
+    public static ScriptClass registerSealedClass(Environment env, String name, int modifiers, String... permittedSubtypes) {
+        int sealedModifiers = modifiers | Modifier.SEALED;
+        ScriptClass sealedClass = new ScriptClass(name, name, sealedModifiers, null, new ArrayList<>(), null);
+        sealedClass.setEnvironment(env);
+        
+        if (permittedSubtypes != null && permittedSubtypes.length > 0) {
+            List<Type> permits = new ArrayList<>();
+            for (String subtype : permittedSubtypes) {
+                permits.add(new Type(null, subtype, null, 0, null));
+            }
+            sealedClass.setPermittedSubtypes(permits);
+        }
+        
+        env.defineClass(name, sealedClass);
+        return sealedClass;
+    }
+    
+    public ScriptClass registerMethod(String methodName, Function<Object[], Object> implementation) {
+        return registerMethod(methodName, Modifier.PUBLIC, implementation);
+    }
+    
+    public ScriptClass registerMethod(String methodName, int modifiers, Function<Object[], Object> implementation) {
+        NativeMethod method = NativeMethod.createVarArgs(methodName, modifiers, "Object", this, implementation);
+        this.addMethod(method);
+        return this;
+    }
+    
+    public ScriptClass registerMethod(String methodName, int modifiers, String returnType, 
+                                      String[] paramTypes, String[] paramNames,
+                                      Function<Object[], Object> implementation) {
+        NativeMethod method = NativeMethod.create(methodName, modifiers, returnType, paramTypes, paramNames, this, implementation);
+        this.addMethod(method);
+        return this;
+    }
+    
+    public ScriptClass registerStaticMethod(String methodName, Function<Object[], Object> implementation) {
+        return registerMethod(methodName, Modifier.PUBLIC | Modifier.STATIC, implementation);
+    }
+    
+    public ScriptClass registerStaticMethod(String methodName, int modifiers, Function<Object[], Object> implementation) {
+        return registerMethod(methodName, modifiers | Modifier.STATIC, implementation);
+    }
+    
+    public ScriptClass registerConstructor(Function<Object[], Object> implementation) {
+        return registerConstructor(Modifier.PUBLIC, implementation);
+    }
+    
+    public ScriptClass registerConstructor(int modifiers, Function<Object[], Object> implementation) {
+        NativeMethod constructor = new NativeMethod(this.name, modifiers, 
+            new Type(null, this.name, new ArrayList<>(), 0, new ArrayList<>()), 
+            new ArrayList<>(), false, this, true, implementation);
+        this.addConstructor(constructor);
+        return this;
+    }
+    
+    public ScriptClass registerField(String fieldName, Object value) {
+        return registerField(fieldName, Modifier.PUBLIC, value);
+    }
+    
+    public ScriptClass registerField(String fieldName, int modifiers, Object value) {
+        Type fieldType = new Type(null, value != null ? value.getClass().getSimpleName() : "Object", 
+                                 new ArrayList<>(), 0, new ArrayList<>());
+        ScriptField field = new ScriptField(fieldName, modifiers, fieldType, null, this);
+        this.addField(field);
+        
+        if ((modifiers & Modifier.STATIC) != 0) {
+            this.staticFieldValues.put(fieldName, value);
+        }
+        return this;
+    }
+    
+    public ScriptClass registerStaticField(String fieldName, Object value) {
+        return registerField(fieldName, Modifier.PUBLIC | Modifier.STATIC, value);
+    }
+    
+    public ScriptClass registerStaticField(String fieldName, int modifiers, Object value) {
+        return registerField(fieldName, modifiers | Modifier.STATIC, value);
     }
 }
