@@ -206,11 +206,11 @@ public class Environment {
     }
     
     public ScriptClass registerRecord(String name) {
-        return registerRecord(name, Modifier.PUBLIC | Modifier.FINAL);
+        return registerRecord(name, Modifier.PUBLIC);
     }
     
     public ScriptClass registerRecord(String name, int modifiers) {
-        int recordModifiers = modifiers | Modifier.FINAL;
+        int recordModifiers = modifiers | Modifier.FINAL | Modifier.RECORD;
         ScriptClass recordClass = new ScriptClass(name, name, recordModifiers, null, new ArrayList<>(), null);
         recordClass.setEnvironment(this);
         classes.put(name, recordClass);

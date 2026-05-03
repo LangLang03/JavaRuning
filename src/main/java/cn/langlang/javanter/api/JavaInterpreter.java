@@ -420,6 +420,10 @@ public class JavaInterpreter {
         return globalEnv;
     }
     
+    public Interpreter getInterpreter() {
+        return interpreter;
+    }
+    
     public void addAnnotationProcessor(cn.langlang.javanter.annotation.AnnotationProcessor processor) {
         interpreter.addAnnotationProcessor(processor);
     }
