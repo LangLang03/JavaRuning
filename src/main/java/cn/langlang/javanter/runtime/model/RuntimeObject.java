@@ -77,6 +77,41 @@ public class RuntimeObject {
         return capturedVariables;
     }
     
+    /**
+     * Invokes a method on this object instance.
+     *
+     * @param methodName The name of the method to invoke
+     * @param args The arguments to pass to the method
+     * @return The result of the method invocation
+     * @throws RuntimeException if no interpreter is available or method is not found
+     */
+    public Object invokeMethod(String methodName, List<Object> args) {
+        Interpreter interpreter = currentInterpreter.get();
+        if (interpreter == null) {
+            throw new RuntimeException("No interpreter available for method invocation");
+        }
+        
+        ScriptMethod method = scriptClass.getMethod(methodName, args != null ? args : Collections.emptyList());
+        if (method == null) {
+            throw new RuntimeException("Method " + methodName + " not found");
+        }
+        
+        return interpreter.invokeMethod(this, method, args);
+    }
+    
+    /**
+     * Invokes a method on this object instance with varargs.
+     *
+     * @param methodName The name of the method to invoke
+     * @param args The arguments to pass to the method
+     * @return The result of the method invocation
+     * @throws RuntimeException if no interpreter is available or method is not found
+     */
+    public Object invokeMethod(String methodName, Object... args) {
+        List<Object> argList = args != null ? Arrays.asList(args) : Collections.emptyList();
+        return invokeMethod(methodName, argList);
+    }
+    
     @Override
     public String toString() {
         if (scriptClass instanceof ScriptEnum) {
