@@ -1,5 +1,7 @@
 package cn.langlang.javanter.runtime.environment;
 
+import cn.langlang.javanter.ast.type.Type;
+import cn.langlang.javanter.parser.Modifier;
 import cn.langlang.javanter.runtime.model.RuntimeObject;
 import cn.langlang.javanter.runtime.model.ScriptClass;
 import java.util.*;
@@ -176,5 +178,63 @@ public class Environment {
      */
     public Environment pop() {
         return parent;
+    }
+    
+    public ScriptClass registerClass(String name) {
+        return registerClass(name, Modifier.PUBLIC);
+    }
+    
+    public ScriptClass registerClass(String name, int modifiers) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, null, new ArrayList<>(), null);
+        scriptClass.setEnvironment(this);
+        classes.put(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public ScriptClass registerClass(String name, int modifiers, ScriptClass superClass) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, superClass, new ArrayList<>(), null);
+        scriptClass.setEnvironment(this);
+        classes.put(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public ScriptClass registerClass(String name, int modifiers, ScriptClass superClass, List<ScriptClass> interfaces) {
+        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, superClass, interfaces, null);
+        scriptClass.setEnvironment(this);
+        classes.put(name, scriptClass);
+        return scriptClass;
+    }
+    
+    public ScriptClass registerRecord(String name) {
+        return registerRecord(name, Modifier.PUBLIC | Modifier.FINAL);
+    }
+    
+    public ScriptClass registerRecord(String name, int modifiers) {
+        int recordModifiers = modifiers | Modifier.FINAL;
+        ScriptClass recordClass = new ScriptClass(name, name, recordModifiers, null, new ArrayList<>(), null);
+        recordClass.setEnvironment(this);
+        classes.put(name, recordClass);
+        return recordClass;
+    }
+    
+    public ScriptClass registerSealedClass(String name, String... permittedSubtypes) {
+        return registerSealedClass(name, Modifier.PUBLIC | Modifier.SEALED, permittedSubtypes);
+    }
+    
+    public ScriptClass registerSealedClass(String name, int modifiers, String... permittedSubtypes) {
+        int sealedModifiers = modifiers | Modifier.SEALED;
+        ScriptClass sealedClass = new ScriptClass(name, name, sealedModifiers, null, new ArrayList<>(), null);
+        sealedClass.setEnvironment(this);
+        
+        if (permittedSubtypes != null && permittedSubtypes.length > 0) {
+            List<Type> permits = new ArrayList<>();
+            for (String subtype : permittedSubtypes) {
+                permits.add(new Type(null, subtype, null, 0, null));
+            }
+            sealedClass.setPermittedSubtypes(permits);
+        }
+        
+        classes.put(name, sealedClass);
+        return sealedClass;
     }
 }

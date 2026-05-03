@@ -606,64 +606,6 @@ public class ScriptClass {
         return false;
     }
     
-    public static ScriptClass registerClass(Environment env, String name) {
-        return registerClass(env, name, Modifier.PUBLIC);
-    }
-    
-    public static ScriptClass registerClass(Environment env, String name, int modifiers) {
-        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, null, new ArrayList<>(), null);
-        scriptClass.setEnvironment(env);
-        env.defineClass(name, scriptClass);
-        return scriptClass;
-    }
-    
-    public static ScriptClass registerClass(Environment env, String name, int modifiers, ScriptClass superClass) {
-        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, superClass, new ArrayList<>(), null);
-        scriptClass.setEnvironment(env);
-        env.defineClass(name, scriptClass);
-        return scriptClass;
-    }
-    
-    public static ScriptClass registerClass(Environment env, String name, int modifiers, ScriptClass superClass, List<ScriptClass> interfaces) {
-        ScriptClass scriptClass = new ScriptClass(name, name, modifiers, superClass, interfaces, null);
-        scriptClass.setEnvironment(env);
-        env.defineClass(name, scriptClass);
-        return scriptClass;
-    }
-    
-    public static ScriptClass registerRecord(Environment env, String name) {
-        return registerRecord(env, name, Modifier.PUBLIC | Modifier.FINAL);
-    }
-    
-    public static ScriptClass registerRecord(Environment env, String name, int modifiers) {
-        int recordModifiers = modifiers | Modifier.FINAL;
-        ScriptClass recordClass = new ScriptClass(name, name, recordModifiers, null, new ArrayList<>(), null);
-        recordClass.setEnvironment(env);
-        env.defineClass(name, recordClass);
-        return recordClass;
-    }
-    
-    public static ScriptClass registerSealedClass(Environment env, String name, String... permittedSubtypes) {
-        return registerSealedClass(env, name, Modifier.PUBLIC | Modifier.SEALED, permittedSubtypes);
-    }
-    
-    public static ScriptClass registerSealedClass(Environment env, String name, int modifiers, String... permittedSubtypes) {
-        int sealedModifiers = modifiers | Modifier.SEALED;
-        ScriptClass sealedClass = new ScriptClass(name, name, sealedModifiers, null, new ArrayList<>(), null);
-        sealedClass.setEnvironment(env);
-        
-        if (permittedSubtypes != null && permittedSubtypes.length > 0) {
-            List<Type> permits = new ArrayList<>();
-            for (String subtype : permittedSubtypes) {
-                permits.add(new Type(null, subtype, null, 0, null));
-            }
-            sealedClass.setPermittedSubtypes(permits);
-        }
-        
-        env.defineClass(name, sealedClass);
-        return sealedClass;
-    }
-    
     public ScriptClass registerMethod(String methodName, Function<Object[], Object> implementation) {
         return registerMethod(methodName, Modifier.PUBLIC, implementation);
     }
