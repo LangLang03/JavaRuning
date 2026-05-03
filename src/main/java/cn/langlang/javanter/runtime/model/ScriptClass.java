@@ -5,6 +5,7 @@ import cn.langlang.javanter.ast.declaration.ParameterDeclaration;
 import cn.langlang.javanter.ast.declaration.TypeDeclaration;
 import cn.langlang.javanter.ast.type.Type;
 import cn.langlang.javanter.ast.type.TypeParameter;
+import cn.langlang.javanter.interpreter.Interpreter;
 import cn.langlang.javanter.parser.Modifier;
 import cn.langlang.javanter.runtime.TypeConstants;
 import cn.langlang.javanter.runtime.environment.Environment;
@@ -666,5 +667,48 @@ public class ScriptClass {
     
     public ScriptClass registerStaticField(String fieldName, int modifiers, Object value) {
         return registerField(fieldName, modifiers | Modifier.STATIC, value);
+    }
+    
+    /**
+     * Invokes a static method on this class.
+     *
+     * @param methodName The name of the static method to invoke
+     * @param args The arguments to pass to the method
+     * @return The result of the method invocation
+     * @throws RuntimeException if no interpreter is available or method is not found
+     */
+    public Object invokeStaticMethod(String methodName, List<Object> args) {
+        Interpreter interpreter = RuntimeObject.getCurrentInterpreter();
+        if (interpreter == null) {
+            throw new RuntimeException("No interpreter available for static method invocation");
+        }
+        
+        ScriptMethod method = getMethod(methodName, args != null ? args : Collections.emptyList());
+        if (method == null) {
+            throw new RuntimeException("Static method " + methodName + " not found in class " + name);
+        }
+        
+        if (!method.isStatic()) {
+            throw new RuntimeException("Method " + methodName + " is not static");
+        }
+        
+        if (method instanceof NativeMethod) {
+            return ((NativeMethod) method).getNativeImplementation().apply(args != null ? args.toArray() : new Object[0]);
+        }
+        
+        return interpreter.invokeStaticMethod(this, methodName, args);
+    }
+    
+    /**
+     * Invokes a static method on this class with varargs.
+     *
+     * @param methodName The name of the static method to invoke
+     * @param args The arguments to pass to the method
+     * @return The result of the method invocation
+     * @throws RuntimeException if no interpreter is available or method is not found
+     */
+    public Object invokeStaticMethod(String methodName, Object... args) {
+        List<Object> argList = args != null ? Arrays.asList(args) : Collections.emptyList();
+        return invokeStaticMethod(methodName, argList);
     }
 }
